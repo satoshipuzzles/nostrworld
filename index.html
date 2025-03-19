@@ -1,1507 +1,2510 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="RelayWorld - A multiplayer game built on the Nostr protocol">
-    <meta name="author" content="Claude AI">
-    <title>RelayWorld - Nostr Multiplayer Game</title>
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --color-bg: #121212;
-            --color-bg-light: #1e1e1e;
-            --color-primary: #8BAC0F;
-            --color-primary-dark: #4A5607;
-            --color-secondary: #0986D6;
-            --color-text: #E0E0E0;
-            --color-text-dim: #A0A0A0;
-            --color-error: #CF3030;
-            --border-primary: 2px solid var(--color-primary);
-            --border-radius-sm: 4px;
-            --border-radius-md: 8px;
-            --border-radius-lg: 12px;
-            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-        }
-        
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-        
-        body {
-            font-family: 'VT323', monospace;
-            background-color: var(--color-bg);
-            color: var(--color-text);
-            overflow: hidden;
-        }
-        
-        canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            z-index: 0;
-        }
-        
-        /* Login Screen */
-        #login-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background-color: rgba(0, 0, 0, 0.9);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 999;
-            transition: opacity 0.5s;
-        }
-        
-        #login-title {
-            font-family: 'Press Start 2P', monospace;
-            font-size: 36px;
-            color: var(--color-primary);
-            margin-bottom: 30px;
-            text-shadow: 3px 3px 0 var(--color-bg);
-        }
-        
-        #login-button {
-            background-color: var(--color-primary);
-            color: var(--color-bg);
-            border: none;
-            border-radius: var(--border-radius-md);
-            padding: 15px 30px;
-            font-size: 18px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        
-        #login-button:hover {
-            background-color: var(--color-secondary);
-        }
-        
-        /* UI Elements */
-        #game-ui {
-            position: relative;
-            z-index: 100;
-            pointer-events: none;
-        }
-        
-        #top-bar {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            right: 10px;
-            display: flex;
-            justify-content: space-between;
-            pointer-events: all;
-        }
-        
-        #score-display {
-            background-color: var(--color-bg-light);
-            padding: 10px 20px;
-            border-radius: var(--border-radius-md);
-            border: var(--border-primary);
-            font-size: 20px;
-        }
-        
-        #controls {
-            display: flex;
-            gap: 10px;
-        }
-        
-        #voice-toggle {
-            background-color: var(--color-primary-dark);
-            color: var(--color-text);
-            border: 1px solid var(--color-primary);
-            border-radius: 50%;
-            width: 36px;
-            height: 36px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            position: relative;
-        }
-        
-        #voice-indicator {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background-color: #555;
-        }
-        
-        #relay-selection {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        
-        #relay-selector {
-            background-color: var(--color-bg-light);
-            color: var(--color-text);
-            border: 1px solid var(--color-primary);
-            border-radius: var(--border-radius-sm);
-            padding: 5px;
-        }
-        
-        #add-relay-button {
-            background-color: var(--color-primary-dark);
-            color: var(--color-text);
-            border: 1px solid var(--color-primary);
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 16px;
-        }
-        
-        #mini-map {
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            width: 150px;
-            height: 150px;
-            background-color: rgba(30, 30, 30, 0.8);
-            border-radius: var(--border-radius-md);
-            border: var(--border-primary);
-            overflow: hidden;
-        }
-        
-        #chat-container {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            width: 300px;
-            background-color: rgba(30, 30, 30, 0.8);
-            border-radius: var(--border-radius-md);
-            border: var(--border-primary);
-            padding: 10px;
-            pointer-events: all;
-        }
-        
-        .chat-input-wrapper {
-            display: flex;
-            gap: 5px;
-        }
-        
-        #chat-input, #cinema-input, #cafe-input {
-            flex: 1;
-            background-color: var(--color-bg-light);
-            color: var(--color-text);
-            border: 1px solid var(--color-primary-dark);
-            border-radius: var(--border-radius-sm);
-            padding: 5px 10px;
-            font-size: 16px;
-        }
-        
-        #send-chat-button, #cinema-chat-send, #cafe-chat-send {
-            background-color: var(--color-primary);
-            color: var(--color-bg);
-            border: none;
-            border-radius: var(--border-radius-sm);
-            padding: 5px 10px;
-            font-size: 16px;
-        }
-        
-        /* User Popup */
-        #user-popup {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 300px;
-            background-color: var(--color-bg-light);
-            border: var(--border-primary);
-            border-radius: var(--border-radius-lg);
-            padding: 20px;
-            display: none;
-            box-shadow: var(--shadow-lg);
-            z-index: 200;
-        }
-        
-        #user-popup-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 20px;
-        }
-        
-        #user-popup-info {
-            display: flex;
-            flex: 1;
-        }
-        
-        #user-popup-image {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            margin-right: 15px;
-            object-fit: cover;
-            background-color: var(--color-primary-dark);
-        }
-        
-        #user-popup-name {
-            font-size: 20px;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        
-        #user-popup-npub {
-            font-size: 14px;
-            color: var(--color-text-dim);
-        }
-        
-        #user-popup-close {
-            background-color: var(--color-error);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 16px;
-        }
-        
-        #user-popup-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        
-        #user-popup-actions button {
-            flex: 1;
-            min-width: 120px;
-            background-color: var(--color-primary-dark);
-            color: var(--color-text);
-            border: 1px solid var(--color-primary);
-            border-radius: var(--border-radius-sm);
-            padding: 8px 0;
-        }
-        
-        #user-notes {
-            border-top: 1px solid var(--color-primary-dark);
-            padding-top: 10px;
-        }
-        
-        #user-notes h3 {
-            margin-bottom: 10px;
-            color: var(--color-primary);
-        }
-        
-        .user-note {
-            background-color: rgba(30, 30, 30, 0.7);
-            border-radius: var(--border-radius-sm);
-            padding: 10px;
-            margin-bottom: 10px;
-            font-size: 14px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        /* Zap Interface */
-        #zap-interface {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 350px;
-            background-color: var(--color-bg-light);
-            border: var(--border-primary);
-            border-radius: var(--border-radius-lg);
-            padding: 20px;
-            display: none;
-            box-shadow: var(--shadow-lg);
-            z-index: 250;
-        }
-        
-        #zap-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 20px;
-        }
-        
-        #zap-target {
-            display: flex;
-            flex: 1;
-        }
-        
-        #zap-target-image {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            margin-right: 15px;
-            object-fit: cover;
-            background-color: var(--color-primary-dark);
-        }
-        
-        #zap-target-info h3 {
-            margin-bottom: 5px;
-        }
-        
-        #zap-close {
-            background-color: var(--color-error);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 16px;
-        }
-        
-        #zap-amount-container {
-            margin-bottom: 15px;
-        }
-        
-        #zap-amount {
-            width: 100%;
-            background-color: var(--color-bg);
-            color: var(--color-text);
-            border: 1px solid var(--color-primary-dark);
-            border-radius: var(--border-radius-sm);
-            padding: 10px;
-            font-size: 18px;
-            margin-bottom: 10px;
-        }
-        
-        .zap-presets {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        
-        .zap-preset {
-            flex: 1;
-            background-color: var(--color-primary-dark);
-            color: var(--color-text);
-            border: none;
-            border-radius: var(--border-radius-sm);
-            padding: 5px 0;
-        }
-        
-        #zap-message {
-            width: 100%;
-            background-color: var(--color-bg);
-            color: var(--color-text);
-            border: 1px solid var(--color-primary-dark);
-            border-radius: var(--border-radius-sm);
-            padding: 10px;
-            font-size: 16px;
-            margin-bottom: 15px;
-        }
-        
-        #zap-send-button {
-            width: 100%;
-            background-color: var(--color-primary);
-            color: var(--color-bg);
-            border: none;
-            border-radius: var(--border-radius-sm);
-            padding: 10px;
-            font-size: 18px;
-            font-weight: bold;
-        }
-        
-        /* Toast Notifications */
-        #toast-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            max-width: 300px;
-            z-index: 1000;
-        }
-        
-        .toast {
-            background-color: var(--color-bg-light);
-            color: var(--color-text);
-            border-radius: var(--border-radius-md);
-            padding: 15px;
-            margin-bottom: 10px;
-            box-shadow: var(--shadow-lg);
-            animation: slideIn 0.3s, fadeOut 0.5s 2.5s forwards;
-        }
-        
-        .toast.success {
-            border-left: 5px solid #10B981;
-        }
-        
-        .toast.error {
-            border-left: 5px solid #EF4444;
-        }
-        
-        .toast.warning {
-            border-left: 5px solid #F59E0B;
-        }
-        
-        .toast.info {
-            border-left: 5px solid #3B82F6;
-        }
-        
-        @keyframes slideIn {
-            from { transform: translateX(100%); }
-            to { transform: translateX(0); }
-        }
-        
-        @keyframes fadeOut {
-            from { opacity: 1; }
-            to { opacity: 0; }
-        }
-        
-        /* Collection Effect */
-        .collect-effect {
-            position: absolute;
-            transform: translate(-50%, -50%);
-            animation: collectAnimation 0.5s forwards;
-            z-index: 50;
-            content: "+";
-            font-size: 24px;
-            color: gold;
-            text-shadow: 0 0 5px black;
-            pointer-events: none;
-        }
-        
-        @keyframes collectAnimation {
-            0% { transform: scale(1); opacity: 1; }
-            100% { transform: scale(2); opacity: 0; }
-        }
-        
-        /* Loading Animation */
-        .spinner {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            border-top-color: #fff;
-            animation: spin 1s ease-in-out infinite;
-        }
-        
-        @keyframes spin { 
-            to { transform: rotate(360deg); } 
-        }
-        
-        /* From-Me Chat Message */
-        .chat-message.from-me .username {
-            color: var(--color-primary);
-            font-weight: bold;
-        }
-        
-        /* Leaderboard Styles */
-      #leaderboard {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 400px;
-        max-width: 90vw;
-        background-color: var(--color-bg-light);
-        border: var(--border-primary);
-        border-radius: var(--border-radius-lg);
-        padding: 20px;
-        display: none;
-        box-shadow: var(--shadow-lg);
-        z-index: 300;
-        max-height: 80vh;
-        overflow-y: auto;
-      }
-      
-      .leaderboard-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-        border-bottom: 1px solid var(--color-primary-dark);
-        padding-bottom: 10px;
-      }
-      
-      .leaderboard-header h3 {
-        margin: 0;
-        color: var(--color-primary);
-        font-size: 22px;
-      }
-      
-      #leaderboard-close {
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        background-color: var(--color-error);
-        color: white;
-        border: none;
-        font-size: 18px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
-      
-      .leaderboard-player {
-        display: flex;
-        align-items: center;
-        padding: 10px;
-        border-bottom: 1px solid var(--color-primary-dark);
-        transition: background-color 0.2s;
-        cursor: pointer;
-      }
-      
-      .leaderboard-player:hover {
-        background-color: rgba(139, 172, 15, 0.1);
-      }
-      
-      .leaderboard-player.current-player {
-        background-color: rgba(139, 172, 15, 0.2);
-      }
-      
-      .leaderboard-player .rank {
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        background-color: var(--color-primary-dark);
-        color: var(--color-text);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        margin-right: 15px;
-        font-weight: bold;
-      }
-      
-      .leaderboard-player .avatar {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        overflow: hidden;
-        margin-right: 15px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        background-color: var(--color-primary-dark);
-        color: var(--color-text);
-        font-weight: bold;
-        font-size: 20px;
-      }
-      
-      .leaderboard-player .avatar img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-      }
-      
-      .leaderboard-player .info {
-        flex: 1;
-      }
-      
-      .leaderboard-player .name {
-        font-weight: bold;
-        margin-bottom: 3px;
-      }
-      
-      .leaderboard-player .score {
-        color: var(--color-secondary);
-      }
-      
-      #leaderboard-button {
-        background-color: var(--color-primary-dark);
-        color: var(--color-text);
-        border: 1px solid var(--color-primary);
-        border-radius: 50%;
-        width: 36px;
-        height: 36px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        font-size: 20px;
-        margin-left: 10px;
-      }
-      
-      /* Special Locations */
-      .game-popup {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 600px;
-        max-width: 90vw;
-        background-color: var(--color-bg-light);
-        border: var(--border-primary);
-        border-radius: var(--border-radius-lg);
-        padding: 20px;
-        display: none;
-        box-shadow: var(--shadow-lg);
-        z-index: 300;
-        max-height: 90vh;
-        overflow-y: auto;
-      }
-      
-      .popup-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-        border-bottom: 1px solid var(--color-primary-dark);
-        padding-bottom: 10px;
-      }
-      
-      .popup-header h3 {
-        margin: 0;
-        color: var(--color-primary);
-        font-size: 22px;
-      }
-      
-      .popup-header button {
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        background-color: var(--color-error);
-        color: white;
-        border: none;
-        font-size: 18px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
-      
-      /* Cinema Styles */
-      #cinema-interface {
-        height: 600px;
-        max-height: 80vh;
-        display: flex;
-        flex-direction: column;
-      }
-      
-      .cinema-content {
-        display: flex;
-        flex-direction: column;
-        flex: 1;
-        overflow: hidden;
-      }
-      
-      #cinema-current {
-        margin-bottom: 20px;
-      }
-      
-      #cinema-screen {
-        width: 100%;
-        height: 240px;
-        background-color: #000;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        margin-bottom: 15px;
-        border-radius: var(--border-radius-md);
-        overflow: hidden;
-      }
-      
-      #cinema-chat {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        margin-bottom: 20px;
-      }
-      
-      #cinema-messages {
-        flex: 1;
-        overflow-y: auto;
-        background-color: rgba(18, 18, 18, 0.6);
-        border: 1px solid var(--color-primary-dark);
-        border-radius: var(--border-radius-md);
-        padding: 10px;
-        margin-bottom: 10px;
-        min-height: 120px;
-      }
-      
-      #cinema-controls {
-        border-top: 1px solid var(--color-primary-dark);
-        padding-top: 15px;
-      }
-      
-      #cinema-url {
-        width: 100%;
-        margin-bottom: 10px;
-      }
-      
-      #cinema-submit {
-        background-color: var(--color-primary);
-        color: var(--color-bg);
-        border: none;
-        border-radius: var(--border-radius-sm);
-        padding: 8px 16px;
-        font-size: 16px;
-        font-weight: bold;
-        width: 100%;
-      }
-      
-      /* Chat Improvements */
-      #chat-tabs {
-        display: flex;
-        margin-bottom: 10px;
-      }
-      
-      .chat-tab {
-        flex: 1;
-        background-color: var(--color-bg);
-        color: var(--color-text-dim);
-        border: 1px solid var(--color-primary-dark);
-        border-bottom: none;
-        border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
-        padding: 8px 0;
-        font-size: 16px;
-        cursor: pointer;
-      }
-      
-      .chat-tab.active {
-        background-color: var(--color-primary-dark);
-        color: var(--color-text);
-      }
-      
-      .chat-image {
-        max-width: 200px;
-        max-height: 150px;
-        margin: 5px 0;
-        border-radius: var(--border-radius-sm);
-      }
-      
-      .chat-message {
-        cursor: default;
-      }
-      
-      .chat-message[data-pubkey] {
-        cursor: pointer;
-        padding: 6px;
-        border-radius: var(--border-radius-sm);
-        transition: background-color 0.2s;
-      }
-      
-      .chat-message[data-pubkey]:hover {
-        background-color: rgba(139, 172, 15, 0.1);
-      }
-      
-      .no-media {
-        color: var(--color-text-dim);
-        padding: 20px;
-        text-align: center;
-      }
-      
-      .media-link {
-        text-align: center;
-        padding: 20px;
-      }
-      
-      .media-link a {
-        display: inline-block;
-        background-color: var(--color-primary-dark);
-        color: var(--color-text);
-        padding: 10px 20px;
-        border-radius: var(--border-radius-md);
-        text-decoration: none;
-      }
-      
-      /* Note Detail Popup */
-      #note-author-info {
-        display: flex;
-        align-items: center;
-        margin-bottom: 15px;
-        padding-bottom: 15px;
-        border-bottom: 1px solid var(--color-primary-dark);
-      }
-      
-      #note-author-avatar {
-        width: 50px;
-        height: 50px;
-        border-radius: 50%;
-        margin-right: 15px;
-        object-fit: cover;
-      }
-      
-      #note-author-name {
-        font-weight: bold;
-        font-size: 18px;
-        margin-bottom: 5px;
-      }
-      
-      #note-author-npub {
-        color: var(--color-text-dim);
-        font-size: 14px;
-      }
-      
-      #note-content {
-        margin-bottom: 20px;
-        font-size: 16px;
-        line-height: 1.5;
-      }
-      
-      #note-actions {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 20px;
-      }
-      
-      #note-actions button {
-        flex: 1;
-        background-color: var(--color-primary-dark);
-        color: var(--color-text);
-        border: 1px solid var(--color-primary);
-        border-radius: var(--border-radius-sm);
-        padding: 8px 12px;
-        font-size: 16px;
-      }
-      
-      #note-replies {
-        border-top: 1px solid var(--color-primary-dark);
-        padding-top: 15px;
-      }
-      
-      .reply {
-        padding: 10px;
-        margin-bottom: 10px;
-        background-color: rgba(30, 30, 30, 0.7);
-        border-radius: var(--border-radius-md);
-      }
-      
-      /* Cafe Styles */
-      #cafe-users {
-        margin-bottom: 20px;
-      }
-      
-      #cafe-user-list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-      }
-      
-      .cafe-user {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        width: 70px;
-      }
-      
-      .cafe-user-avatar {
-        width: 50px;
-        height: 50px;
-        border-radius: 50%;
-        margin-bottom: 5px;
-        object-fit: cover;
-      }
-      
-      .cafe-user-name {
-        font-size: 12px;
-        text-align: center;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        width: 100%;
-      }
-      
-      #cafe-messages {
-        height: 200px;
-        overflow-y: auto;
-        background-color: rgba(18, 18, 18, 0.6);
-        border: 1px solid var(--color-primary-dark);
-        border-radius: var(--border-radius-md);
-        padding: 10px;
-        margin-bottom: 10px;
-      }
-      
-      /* Market Styles */
-      #market-listings {
-        margin-bottom: 20px;
-      }
-      
-      #market-items {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-        gap: 15px;
-      }
-      
-      .market-item {
-        background-color: rgba(30, 30, 30, 0.7);
-        border-radius: var(--border-radius-md);
-        padding: 15px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-      }
-      
-      .market-item-name {
-        font-weight: bold;
-        margin-bottom: 10px;
-      }
-      
-      .market-item-price {
-        color: var(--color-secondary);
-        margin-bottom: 10px;
-      }
-      
-      .market-buy-button {
-        background-color: var(--color-primary);
-        color: var(--color-bg);
-        border: none;
-        border-radius: var(--border-radius-sm);
-        padding: 5px 10px;
-        font-size: 14px;
-        width: 100%;
-      }
-      
-      #market-controls {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        padding-top: 15px;
-        border-top: 1px solid var(--color-primary-dark);
-      }
-      
-      #market-controls input {
-        width: 100%;
-      }
-      
-      #market-list-item {
-        background-color: var(--color-primary);
-        color: var(--color-bg);
-        border: none;
-        border-radius: var(--border-radius-sm);
-        padding: 8px 12px;
-        font-size: 16px;
-      }
-      
-      /* Chat Message Improvements */
-      .chat-messages {
-        height: 120px;
-        overflow-y: auto;
-        margin-bottom: 10px;
-        padding: 10px;
-        background-color: rgba(18, 18, 18, 0.6);
-        border: 1px solid var(--color-primary-dark);
-        border-radius: var(--border-radius-md);
-        font-size: 16px;
-        scrollbar-width: thin;
-        scrollbar-color: var(--color-primary-dark) rgba(18, 18, 18, 0.6);
-      }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relay World</title>
+  <!-- Essential Libraries -->
+  <script src="https://unpkg.com/nostr-tools@1.12.0/lib/nostr.bundle.js"></script>
+  <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+  <script src="https://unpkg.com/@getalby/bitcoin-connect@1.0.1/dist/index.browser.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    /* Modern Dark Theme */
+    :root {
+      --color-bg: #121212;
+      --color-bg-light: #1e1e1e;
+      --color-primary: #8bac0f;
+      --color-primary-dark: #306230;
+      --color-secondary: #FFD700;
+      --color-text: #e0f8d0;
+      --color-text-dim: #a0a0a0;
+      --color-success: #10B981;
+      --color-error: #EF4444;
+      --color-warning: #F59E0B;
+      --color-info: #3B82F6;
+      --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.5);
+      --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.7);
+      --glow-primary: 0 0 8px rgba(139, 172, 15, 0.6);
+      --border-primary: 2px solid var(--color-primary);
+      --border-radius-sm: 4px;
+      --border-radius-md: 8px;
+      --border-radius-lg: 12px;
+    }
+    
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'VT323', monospace;
+      background-color: var(--color-bg);
+      color: var(--color-text);
+    }
+    
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+    }
+    
+    button {
+      font-family: 'VT323', monospace;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    input, textarea {
+      font-family: 'VT323', monospace;
+      background-color: var(--color-bg-light);
+      color: var(--color-text);
+      border: var(--border-primary);
+      border-radius: var(--border-radius-sm);
+      padding: 8px 12px;
+    }
+    
+    /* Login Screen */
+    #login-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: var(--color-bg);
+      background-image: 
+        radial-gradient(circle at 25% 25%, rgba(139, 172, 15, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 75% 75%, rgba(255, 215, 0, 0.05) 0%, transparent 50%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+    }
+    
+    #login-panel {
+      background-color: var(--color-bg-light);
+      border: var(--border-primary);
+      border-radius: var(--border-radius-lg);
+      padding: 32px;
+      width: 80%;
+      max-width: 500px;
+      box-shadow: var(--shadow-lg);
+      text-align: center;
+    }
+    
+    #login-panel h1 {
+      margin-top: 0;
+      color: var(--color-primary);
+      font-family: 'Press Start 2P', monospace;
+      font-size: 32px;
+      text-shadow: var(--glow-primary);
+    }
+    
+    #login-panel p {
+      margin-bottom: 24px;
+      color: var(--color-text-dim);
+      font-size: 18px;
+    }
+    
+    #login-button {
+      background-color: var(--color-primary);
+      color: var(--color-bg);
+      border: none;
+      border-radius: var(--border-radius-md);
+      padding: 16px 32px;
+      font-size: 18px;
+      font-weight: bold;
+      box-shadow: var(--shadow-md);
+      transition: all 0.3s ease;
+    }
+    
+    #login-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6);
+      background-color: var(--color-secondary);
+    }
+    
+    #login-button:active {
+      transform: translateY(1px);
+      box-shadow: var(--shadow-sm);
+    }
+    
+    /* Main UI Container */
+    #ui-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 100;
+      font-size: 16px;
+    }
+    
+    #ui-container > * {
+      pointer-events: auto;
+    }
+    
+    /* Top Bar */
+    #top-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: rgba(30, 30, 30, 0.8);
+      backdrop-filter: blur(8px);
+      border-bottom: var(--border-primary);
+      padding: 10px 16px;
+      box-shadow: var(--shadow-md);
+      z-index: 200;
+    }
+    
+    #score-display {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 14px;
+      color: var(--color-secondary);
+      text-shadow: 0 0 5px rgba(255, 215, 0, 0.7);
+    }
+    
+    #relay-selector-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    #relay-selector {
+      background-color: var(--color-bg-light);
+      color: var(--color-text);
+      border: var(--border-primary);
+      border-radius: var(--border-radius-sm);
+      padding: 6px 10px;
+      font-family: 'VT323', monospace;
+      font-size: 16px;
+    }
+    
+    #add-relay-button {
+      background-color: var(--color-primary-dark);
+      color: var(--color-text);
+      border: 1px solid var(--color-primary);
+      border-radius: var(--border-radius-sm);
+      padding: 6px 10px;
+      font-size: 16px;
+    }
+    
+    #voice-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    #voice-toggle {
+      background-color: var(--color-bg-light);
+      color: var(--color-text);
+      border: var(--border-primary);
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 20px;
+    }
+    
+    #voice-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: #555;
+    }
+    
+    /* Chat Container */
+    #chat-container {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background-color: rgba(30, 30, 30, 0.8);
+      backdrop-filter: blur(8px);
+      border-top: var(--border-primary);
+      padding: 10px 16px;
+      box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
+    }
+    
+    #chat-messages {
+      height: 120px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+      padding: 10px;
+      background-color: rgba(18, 18, 18, 0.6);
+      border: 1px solid var(--color-primary-dark);
+      border-radius: var(--border-radius-md);
+      font-size: 16px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-primary-dark) rgba(18, 18, 18, 0.6);
+    }
+    
+    #chat-messages::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    #chat-messages::-webkit-scrollbar-track {
+      background: rgba(18, 18, 18, 0.6);
+      border-radius: 4px;
+    }
+    
+    #chat-messages::-webkit-scrollbar-thumb {
+      background-color: var(--color-primary-dark);
+      border-radius: 4px;
+    }
+    
+    .chat-message {
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+    
+    .username {
+      color: var(--color-primary);
+      font-weight: bold;
+    }
+    
+    .chat-message.from-me .username {
+      color: var(--color-secondary);
+    }
+    
+    .chat-input-wrapper {
+      display: flex;
+      gap: 8px;
+    }
+    
+    #chat-input {
+      flex: 1;
+      font-size: 16px;
+    }
+    
+    #send-chat-button {
+      background-color: var(--color-primary);
+      color: var(--color-bg);
+      border: none;
+      border-radius: var(--border-radius-sm);
+      padding: 8px 16px;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    
+    /* Mini Map */
+    #mini-map {
+      position: fixed;
+      bottom: 158px;
+      right: 16px;
+      background-color: rgba(30, 30, 30, 0.7);
+      border: var(--border-primary);
+      border-radius: var(--border-radius-md);
+      padding: 5px;
+      box-shadow: var(--shadow-md);
+    }
+    
+    /* User Popup */
+    #user-popup {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 400px;
+      max-width: 90vw;
+      background-color: var(--color-bg-light);
+      border: var(--border-primary);
+      border-radius: var(--border-radius-lg);
+      padding: 20px;
+      display: none;
+      box-shadow: var(--shadow-lg);
+      z-index: 300;
+    }
+    
+    #user-popup-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    
+    #user-popup-image {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: var(--border-primary);
+    }
+    
+    #user-popup-details {
+      flex: 1;
+    }
+    
+    #user-popup-name {
+      font-size: 22px;
+      font-weight: bold;
+      margin-bottom: 4px;
+      color: var(--color-primary);
+    }
+    
+    #user-popup-npub {
+      font-size: 14px;
+      color: var(--color-text-dim);
+    }
+    
+    #user-popup-close {
+      position: absolute;
+      top: -10px;
+      right: -10px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background-color: var(--color-error);
+      color: white;
+      border: none;
+      font-size: 18px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: var(--shadow-sm);
+    }
+    
+    #user-popup-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
+    #user-popup-actions button {
+      flex: 1;
+      min-width: 80px;
+      background-color: var(--color-primary-dark);
+      color: var(--color-text);
+      border: 1px solid var(--color-primary);
+      border-radius: var(--border-radius-sm);
+      padding: 8px 12px;
+      font-size: 16px;
+      transition: all 0.2s ease;
+    }
+    
+    #user-popup-actions button:hover {
+      background-color: var(--color-primary);
+      color: var(--color-bg);
+    }
+    
+    #user-notes-container h4 {
+      font-size: 18px;
+      color: var(--color-text);
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--color-primary-dark);
+      padding-bottom: 5px;
+    }
+    
+    .user-note {
+      background-color: rgba(30, 30, 30, 0.8);
+      border-radius: var(--border-radius-md);
+      padding: 12px;
+      margin-bottom: 10px;
+      border-left: 3px solid var(--color-primary);
+    }
+    
+    /* Zap Interface */
+    #zap-interface {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 350px;
+      max-width: 90vw;
+      background-color: var(--color-bg-light);
+      border: var(--border-primary);
+      border-radius: var(--border-radius-lg);
+      padding: 20px;
+      display: none;
+      box-shadow: var(--shadow-lg);
+      z-index: 400;
+    }
+    
+    #zap-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--color-primary-dark);
+      padding-bottom: 10px;
+    }
+    
+    #zap-header h3 {
+      margin: 0;
+      color: var(--color-primary);
+      font-size: 22px;
+    }
+    
+    #zap-close {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background-color: var(--color-error);
+      color: white;
+      border: none;
+      font-size: 18px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .zap-target {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      background-color: rgba(30, 30, 30, 0.8);
+      border-radius: var(--border-radius-md);
+      padding: 12px;
+    }
+    
+    #zap-target-image {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1px solid var(--color-primary);
+    }
+    
+    #zap-target-name {
+      font-size: 18px;
+      font-weight: bold;
+      color: var(--color-text);
+    }
+    
+    .zap-presets {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    
+    .zap-preset {
+      flex: 1;
+      background-color: var(--color-primary-dark);
+      color: var(--color-text);
+      border: 1px solid var(--color-primary);
+      border-radius: var(--border-radius-sm);
+      padding: 8px 12px;
+      font-size: 16px;
+      transition: all 0.2s ease;
+    }
+    
+    .zap-preset:hover {
+      background-color: var(--color-primary);
+      color: var(--color-bg);
+    }
+    
+    .zap-custom {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    #zap-amount {
+      flex: 1;
+      font-size: 16px;
+    }
+    
+    .zap-unit {
+      color: var(--color-secondary);
+      font-weight: bold;
+    }
+    
+    #zap-message {
+      width: 100%;
+      height: 80px;
+      margin: 12px 0;
+      resize: vertical;
+      font-size: 16px;
+    }
+    
+    #zap-send-button {
+      width: 100%;
+      background-color: var(--color-secondary);
+      color: var(--color-bg);
+      border: none;
+      border-radius: var(--border-radius-md);
+      padding: 12px;
+      font-size: 18px;
+      font-weight: bold;
+      box-shadow: var(--shadow-md);
+      transition: all 0.2s ease;
+    }
+    
+    #zap-send-button:hover {
+      background-color: var(--color-primary);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6);
+    }
+    
+    /* Toast Notifications */
+    #toast-container {
+      position: fixed;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 500;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      pointer-events: none;
+    }
+    
+    .toast {
+      background-color: var(--color-bg-light);
+      color: var(--color-text);
+      padding: 12px 24px;
+      border-radius: var(--border-radius-md);
+      min-width: 200px;
+      max-width: 80vw;
+      text-align: center;
+      box-shadow: var(--shadow-md);
+      animation: toast-fade 3s forwards;
+      font-size: 16px;
+    }
+    
+    .toast.success {
+      border-left: 4px solid var(--color-success);
+    }
+    
+    .toast.error {
+      border-left: 4px solid var(--color-error);
+    }
+    
+    .toast.info {
+      border-left: 4px solid var(--color-info);
+    }
+    
+    .toast.warning {
+      border-left: 4px solid var(--color-warning);
+    }
+    
+    @keyframes toast-fade {
+      0%, 80% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-20px); }
+    }
+    
+    /* Collect Effect Animation */
+    @keyframes collect {
+      0% { transform: scale(0.5); opacity: 1; }
+      100% { transform: scale(2); opacity: 0; }
+    }
+    
+    .collect-effect {
+      position: absolute;
+      border-radius: 50%;
+      border: 2px solid var(--color-secondary);
+      box-shadow: 0 0 10px var(--color-secondary);
+      animation: collect 0.5s ease-out forwards;
+      pointer-events: none;
+    }
+    
+    /* Loading Spinner */
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(139, 172, 15, 0.3);
+      border-radius: 50%;
+      border-top-color: var(--color-primary);
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
-    
-    <div id="login-screen">
-        <h1 id="login-title">RelayWorld</h1>
-        <button id="login-button">CONNECT WITH NOSTR</button>
+  <canvas id="game-canvas"></canvas>
+  
+  <div id="login-screen">
+    <div id="login-panel">
+      <h1>Relay World</h1>
+      <p>A Nostr-powered Adventure</p>
+      <button id="login-button">CONNECT WITH NOSTR</button>
+    </div>
+  </div>
+  
+  <div id="ui-container">
+    <div id="top-bar">
+      <div id="score-display">Score: 0</div>
+      <div id="relay-selector-container">
+        <select id="relay-selector"></select>
+        <button id="add-relay-button">Add Relay</button>
+      </div>
+      <div id="voice-controls">
+        <button id="voice-toggle"><span id="voice-icon">🎙️</span></button>
+        <div id="voice-indicator"></div>
+      </div>
     </div>
     
-    <div id="game-ui">
-        <div id="top-bar">
-            <div id="score-display">Score: 0</div>
-            <div id="controls">
-                <button id="voice-toggle">🎤</button>
-                <div id="relay-selection">
-                    <select id="relay-selector"></select>
-                    <button id="add-relay-button">+</button>
-                </div>
-            </div>
+    <div id="mini-map"></div>
+    
+    <div id="chat-container">
+      <div id="chat-messages"></div>
+      <div class="chat-input-wrapper">
+        <input id="chat-input" placeholder="Type a message...">
+        <button id="send-chat-button">Send</button>
+      </div>
+    </div>
+    
+    <div id="user-popup">
+      <div id="user-popup-header">
+        <img id="user-popup-image" src="" alt="User">
+        <div id="user-popup-details">
+          <div id="user-popup-name">Loading...</div>
+          <div id="user-popup-npub">Loading...</div>
         </div>
-        <div id="mini-map"></div>
-        <div id="chat-container"></div>
+        <button id="user-popup-close">×</button>
+      </div>
+      <div id="user-popup-actions">
+        <button id="follow-button">Follow</button>
+        <button id="chat-button">Chat</button>
+        <button id="voice-chat-button">Voice</button>
+        <button id="zap-button">Zap</button>
+      </div>
+      <div id="user-notes-container">
+        <h4>Recent Notes</h4>
+        <div id="user-notes"></div>
+      </div>
     </div>
+    
+    <div id="zap-interface">
+      <div id="zap-header">
+        <h3>Zap Player</h3>
+        <button id="zap-close">×</button>
+      </div>
+      <div id="zap-content">
+        <div class="zap-target">
+          <img id="zap-target-image" src="" alt="Target">
+          <div id="zap-target-name">Target Name</div>
+        </div>
+        <div class="zap-amount-container">
+          <div class="zap-presets">
+            <button class="zap-preset" data-amount="21">21 ⚡</button>
+            <button class="zap-preset" data-amount="210">210 ⚡</button>
+            <button class="zap-preset" data-amount="2100">2100 ⚡</button>
+          </div>
+          <div class="zap-custom">
+            <input type="number" id="zap-amount" placeholder="Custom amount" min="1" value="21">
+            <span class="zap-unit">sats</span>
+          </div>
+        </div>
+        <textarea id="zap-message" placeholder="Add a message (optional)"></textarea>
+      </div>
+      <button id="zap-send-button">Send Zap</button>
+    </div>
+    
+    <div id="toast-container"></div>
+  </div>
 
-    <script src="https://unpkg.com/nostr-tools/lib/nostr.bundle.js"></script>
-    <script>
-        // Game constants
-        const WORLD_SIZE = 5000;
-        const VIEW_DISTANCE = 1200;
-
-        // Initialize canvas
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        
-        // Set canvas size to window size
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+<script>
+// RelayWorld - Full Implementation
+(async function() {
+  // ===== Library Initialization =====
+  // Try to get NostrTools from various possible sources
+  let NostrTools;
+  if (window.NostrTools) {
+    NostrTools = window.NostrTools;
+  } else if (window.nostr && window.nostr.nip01) {
+    NostrTools = window.nostr.nip01;
+  } else {
+    // Create minimal wrapper if nothing is available
+    NostrTools = {
+      relayInit: function(url) {
+        console.warn("Using fallback relay implementation");
+        const ws = new WebSocket(url);
+        return {
+          url,
+          socket: ws,
+          sub: function(filters) {
+            const subId = Math.random().toString(36).substring(2, 15);
+            ws.send(JSON.stringify(["REQ", subId, ...filters]));
+            
+            const handlers = {
+              eventHandlers: [],
+              eoseHandlers: []
+            };
+            
+            const sub = {
+              unsub: function() {
+                ws.send(JSON.stringify(["CLOSE", subId]));
+              },
+              on: function(type, handler) {
+                if (type === 'event') handlers.eventHandlers.push(handler);
+                if (type === 'eose') handlers.eoseHandlers.push(handler);
+                return sub;
+              }
+            };
+            
+            ws.addEventListener('message', (e) => {
+              const data = JSON.parse(e.data);
+              if (data[0] === "EVENT" && data[1] === subId) {
+                handlers.eventHandlers.forEach(handler => handler(data[2]));
+              }
+              if (data[0] === "EOSE" && data[1] === subId) {
+                handlers.eoseHandlers.forEach(handler => handler());
+              }
+            });
+            
+            return sub;
+          },
+          publish: function(event) {
+            ws.send(JSON.stringify(["EVENT", event]));
+            return true;
+          }
+        };
+      }
+    };
+  }
+  
+  // ===== Core System =====
+  const canvas = document.getElementById('game-canvas');
+  const ctx = canvas.getContext('2d');
+  const loginScreen = document.getElementById('login-screen');
+  const miniMapContainer = document.getElementById('mini-map');
+  const miniMapCanvas = document.createElement('canvas');
+  miniMapCanvas.width = 150;
+  miniMapCanvas.height = 150;
+  miniMapContainer.appendChild(miniMapCanvas);
+  const miniMapCtx = miniMapCanvas.getContext('2d');
+  
+  // Resize canvas to fit window
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+  
+  // ===== Game State =====
+  const WORLD_SIZE = 3000;
+  const VOICE_RANGE = 300;
+  const INTERACTION_RANGE = 100;
+  
+  const RelayWorld = {
+    player: null,
+    users: new Map(),
+    gameRelay: null,
+    loginRelay: null,
+    explorerRelays: new Map(),
+    activeExplorerRelay: null,
+    subscriptions: new Map(),
+    items: [],
+    treasures: [],
+    portals: [
+      { id: "forest", x: 500, y: 500, color: "#228B22" },
+      { id: "mountain", x: WORLD_SIZE - 500, y: WORLD_SIZE - 500, color: "#808080" }
+    ],
+    camera: { x: 0, y: 0 },
+    input: { up: false, down: false, left: false, right: false },
+    weather: { current: "clear", types: ["clear", "rain", "storm"] },
+    audio: {
+      peer: null,
+      localStream: null,
+      connections: {},
+      isVoiceChatActive: false
+    },
+    
+    // Game initialization
+    init: async function() {
+      // Setup event listeners
+      this.setupEventListeners();
+      document.getElementById('login-button').addEventListener('click', this.login.bind(this));
+      
+      // Start game loop
+      this.gameLoop();
+    },
+    
+    // Login with Nostr extension
+    login: async function() {
+      try {
+        // Check for extension
+        if (!window.nostr) {
+          this.showToast("Nostr extension not found. Please install one first.", "error");
+          return;
         }
         
-        // Initial resize and add event listener
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-
-        // Define RelayWorld object
-        const RelayWorld = {
-            player: null,
-            users: new Map(),
-            gameRelay: null,
-            loginRelay: null,
-            explorerRelays: new Map(),
-            activeExplorerRelay: null,
-            subscriptions: new Map(),
-            items: [],
-            treasures: [],
-            specialLocations: [],
-            portals: [
-                { id: "forest", x: 500, y: 500, color: "#228B22" },
-                { id: "mountain", x: WORLD_SIZE - 500, y: WORLD_SIZE - 500, color: "#808080" }
-            ],
-            camera: { x: 0, y: 0 },
-            input: { up: false, down: false, left: false, right: false },
-            weather: { current: "clear", types: ["clear", "rain", "storm"] },
-            audio: {
-                peer: null,
-                localStream: null,
-                connections: {},
-                isVoiceChatActive: false
-            },
-            loadedImages: new Map(),
-            chatMode: 'game',
-
-            init: async function() {
-                // Create UI elements
-                this.createUIElements();
-                
-                // Setup event listeners
-                this.setupEventListeners();
-                document.getElementById('login-button').addEventListener('click', this.login.bind(this));
-                
-                // Start game loop
-                this.gameLoop();
-            },
-
-            createUIElements: function() {
-                // Initialize minimap
-                const minimap = document.getElementById('mini-map');
-                minimap.innerHTML = '<canvas width="150" height="150"></canvas>';
-                
-                // Initialize chat container
-                const chatContainer = document.getElementById('chat-container');
-                chatContainer.innerHTML = `
-                    <div id="chat-tabs">
-                        <button class="chat-tab active" data-mode="game">Game</button>
-                        <button class="chat-tab" data-mode="global">Global</button>
-                    </div>
-                    <div class="chat-messages"></div>
-                    <div class="chat-input-wrapper">
-                        <input type="text" id="chat-input" placeholder="Type a message...">
-                        <button id="send-chat-button">Send</button>
-                    </div>
-                `;
-
-                // Add chat event listeners
-                const chatInput = document.getElementById('chat-input');
-                const sendButton = document.getElementById('send-chat-button');
-                const chatTabs = document.getElementById('chat-tabs');
-
-                chatInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        this.sendChatMessage();
-                    }
-                });
-
-                sendButton.addEventListener('click', () => this.sendChatMessage());
-
-                chatTabs.addEventListener('click', (e) => {
-                    if (e.target.classList.contains('chat-tab')) {
-                        // Update active tab
-                        document.querySelectorAll('.chat-tab').forEach(tab => 
-                            tab.classList.remove('active'));
-                        e.target.classList.add('active');
-                        
-                        // Update chat mode
-                        this.chatMode = e.target.dataset.mode;
-                    }
-                });
-
-                // Initialize relay controls
-                const addRelayButton = document.getElementById('add-relay-button');
-                addRelayButton.addEventListener('click', () => {
-                    const url = prompt('Enter relay URL (e.g., wss://relay.example.com):');
-                    if (url) {
-                        this.connectToNewRelay(url);
-                    }
-                });
-            },
-
-            setupEventListeners: function() {
-                // Add keyboard event listeners
-                window.addEventListener('keydown', (e) => {
-                    switch(e.key.toLowerCase()) {
-                        case 'w': case 'arrowup': this.input.up = true; break;
-                        case 's': case 'arrowdown': this.input.down = true; break;
-                        case 'a': case 'arrowleft': this.input.left = true; break;
-                        case 'd': case 'arrowright': this.input.right = true; break;
-                    }
-                });
-
-                window.addEventListener('keyup', (e) => {
-                    switch(e.key.toLowerCase()) {
-                        case 'w': case 'arrowup': this.input.up = false; break;
-                        case 's': case 'arrowdown': this.input.down = false; break;
-                        case 'a': case 'arrowleft': this.input.left = false; break;
-                        case 'd': case 'arrowright': this.input.right = false; break;
-                    }
-                });
-            },
-
-            gameLoop: function() {
-                // Clear canvas
-                ctx.fillStyle = '#121212';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                // Update player position if logged in
-                if (this.player) {
-                    this.updatePlayerPosition();
-                }
-
-                // Draw game elements
-                this.drawWorld();
-
-                // Request next frame
-                requestAnimationFrame(() => this.gameLoop());
-            },
-
-            updatePlayerPosition: function() {
-                const speed = 5;
-                let dx = 0;
-                let dy = 0;
-
-                // Calculate movement based on input
-                if (this.input.up) dy -= speed;
-                if (this.input.down) dy += speed;
-                if (this.input.left) dx -= speed;
-                if (this.input.right) dx += speed;
-
-                // Apply diagonal movement normalization
-                if (dx !== 0 && dy !== 0) {
-                    dx *= 0.707; // 1/√2
-                    dy *= 0.707;
-                }
-
-                // Update player position
-                this.player.x = Math.max(0, Math.min(WORLD_SIZE, this.player.x + dx));
-                this.player.y = Math.max(0, Math.min(WORLD_SIZE, this.player.y + dy));
-
-                // Update camera to follow player
-                this.camera.x = this.player.x;
-                this.camera.y = this.player.y;
-            },
-
-            drawWorld: function() {
-                // Save context for grid drawing
-                ctx.save();
-                
-                // Apply camera transform
-                ctx.translate(-this.camera.x + canvas.width / 2, -this.camera.y + canvas.height / 2);
-                
-                // Draw grid
-                ctx.strokeStyle = '#1e1e1e';
-                ctx.lineWidth = 1;
-                
-                const gridSize = 100;
-                const startX = Math.floor((this.camera.x - canvas.width / 2) / gridSize) * gridSize;
-                const startY = Math.floor((this.camera.y - canvas.height / 2) / gridSize) * gridSize;
-                const endX = startX + canvas.width + gridSize * 2;
-                const endY = startY + canvas.height + gridSize * 2;
-
-                for (let x = startX; x < endX; x += gridSize) {
-                    ctx.beginPath();
-                    ctx.moveTo(x, startY);
-                    ctx.lineTo(x, endY);
-                    ctx.stroke();
-                }
-
-                for (let y = startY; y < endY; y += gridSize) {
-                    ctx.beginPath();
-                    ctx.moveTo(startX, y);
-                    ctx.lineTo(endX, y);
-                    ctx.stroke();
-                }
-
-                // Draw world bounds
-                ctx.strokeStyle = '#8BAC0F';
-                ctx.lineWidth = 4;
-                ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
-
-                // Draw portals
-                this.portals.forEach(portal => {
-                    ctx.beginPath();
-                    ctx.arc(portal.x, portal.y, 25, 0, Math.PI * 2);
-                    ctx.fillStyle = portal.color;
-                    ctx.fill();
-                });
-
-                // Restore context for UI elements
-                ctx.restore();
-
-                // Draw player
-                if (this.player) {
-                    this.drawPlayer();
-                }
-
-                // Draw minimap
-                this.drawMinimap();
-            },
-
-            drawMinimap: function() {
-                const minimap = document.getElementById('mini-map');
-                const minimapSize = 150;
-                const scale = minimapSize / WORLD_SIZE;
-                
-                // Clear minimap
-                const minimapCtx = minimap.getContext('2d');
-                minimapCtx.fillStyle = '#1e1e1e';
-                minimapCtx.fillRect(0, 0, minimapSize, minimapSize);
-                
-                // Draw player position
-                if (this.player) {
-                    const x = this.player.x * scale;
-                    const y = this.player.y * scale;
-                    
-                    minimapCtx.beginPath();
-                    minimapCtx.arc(x, y, 3, 0, Math.PI * 2);
-                    minimapCtx.fillStyle = '#8BAC0F';
-                    minimapCtx.fill();
-                }
-                
-                // Draw portals
-                this.portals.forEach(portal => {
-                    minimapCtx.beginPath();
-                    minimapCtx.arc(portal.x * scale, portal.y * scale, 3, 0, Math.PI * 2);
-                    minimapCtx.fillStyle = portal.color;
-                    minimapCtx.fill();
-                });
-            },
-
-            drawPlayer: function() {
-                const screenX = canvas.width / 2;
-                const screenY = canvas.height / 2;
-                
-                // Draw player circle
-                ctx.beginPath();
-                ctx.arc(screenX, screenY, 20, 0, Math.PI * 2);
-                ctx.fillStyle = '#8BAC0F';
-                ctx.fill();
-                ctx.strokeStyle = '#4A5607';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-            },
-
-            login: async function() {
-                try {
-                    // Check for extension
-                    if (!window.nostr) {
-                        this.showToast("Nostr extension not found. Please install one first.", "error");
-                        return;
-                    }
-                    
-                    // Show loading state
-                    const loginButton = document.getElementById('login-button');
-                    loginButton.innerHTML = '<span class="spinner"></span> Connecting...';
-                    loginButton.disabled = true;
-                    
-                    // Get public key
-                    const pubkey = await window.nostr.getPublicKey();
-                    
-                    // Initialize player
-                    this.player = {
-                        pubkey,
-                        x: WORLD_SIZE / 2,
-                        y: WORLD_SIZE / 2,
-                        score: 0
-                    };
-                    
-                    // Connect to relays
-                    await this.connectToRelays();
-                    
-                    // Hide login screen with fade
-                    const loginScreen = document.getElementById('login-screen');
-                    loginScreen.style.opacity = '0';
-                    setTimeout(() => {
-                        loginScreen.style.display = 'none';
-                    }, 500);
-                    
-                } catch (error) {
-                    console.error("Login error:", error);
-                    this.showToast("Login failed. Please try again.", "error");
-                    
-                    // Reset login button
-                    const loginButton = document.getElementById('login-button');
-                    loginButton.innerHTML = 'CONNECT WITH NOSTR';
-                    loginButton.disabled = false;
-                }
-            },
-
-            connectToRelays: async function() {
-                try {
-                    // Default relays
-                    const defaultRelays = [
-                        "wss://relay.damus.io",
-                        "wss://nos.lol",
-                        "wss://relay.nostr.band"
-                    ];
-                    
-                    // Connect to first available relay
-                    for (const url of defaultRelays) {
-                        try {
-                            const relay = await this.connectRelay(url);
-                            if (relay) {
-                                this.gameRelay = relay;
-                                this.updateRelaySelector(url);
-                                break;
-                            }
-                        } catch (error) {
-                            console.warn(`Failed to connect to relay ${url}:`, error);
-                        }
-                    }
-                    
-                    if (!this.gameRelay) {
-                        throw new Error("Could not connect to any relay");
-                    }
-                } catch (error) {
-                    throw new Error(`Failed to connect to relays: ${error.message}`);
-                }
-            },
-
-            connectRelay: function(url) {
-                return new Promise((resolve, reject) => {
-                    try {
-                        const relay = NostrTools.relayInit(url);
-                        
-                        relay.on('connect', () => {
-                            console.log(`Connected to ${url}`);
-                            resolve(relay);
-                        });
-                        
-                        relay.on('error', () => {
-                            reject(new Error(`Failed to connect to ${url}`));
-                        });
-                        
-                        relay.connect();
-                    } catch (error) {
-                        reject(error);
-                    }
-                });
-            },
-
-            updateRelaySelector: function(currentRelay) {
-                const selector = document.getElementById('relay-selector');
-                selector.innerHTML = `<option value="${currentRelay}">${currentRelay}</option>`;
-            },
-
-            showToast: function(message, type = 'info') {
-                const toastContainer = document.getElementById('toast-container') || (() => {
-                    const container = document.createElement('div');
-                    container.id = 'toast-container';
-                    document.body.appendChild(container);
-                    return container;
-                })();
-                
-                const toast = document.createElement('div');
-                toast.className = `toast ${type}`;
-                toast.textContent = message;
-                
-                toastContainer.appendChild(toast);
-                setTimeout(() => toast.remove(), 3000);
-            },
-
-            sendChatMessage: async function() {
-                const input = document.getElementById('chat-input');
-                const message = input.value.trim();
-                
-                if (!message || !this.player || !this.gameRelay) return;
-                
-                try {
-                    const event = {
-                        kind: 1,
-                        created_at: Math.floor(Date.now() / 1000),
-                        tags: [['g', 'relayworld']],
-                        content: message,
-                        pubkey: this.player.pubkey
-                    };
-
-                    // Sign the event using the extension
-                    const signedEvent = await window.nostr.signEvent(event);
-                    
-                    // Publish to appropriate relay based on chat mode
-                    if (this.chatMode === 'game') {
-                        await this.gameRelay.publish(signedEvent);
-                    } else if (this.chatMode === 'global' && this.activeExplorerRelay) {
-                        const relay = this.explorerRelays.get(this.activeExplorerRelay);
-                        if (relay) {
-                            await relay.publish(signedEvent);
-                        }
-                    }
-
-                    // Clear input
-                    input.value = '';
-                    
-                    // Add message to chat
-                    this.addChatMessage({
-                        pubkey: this.player.pubkey,
-                        content: message,
-                        created_at: event.created_at,
-                        fromMe: true
-                    });
-
-                } catch (error) {
-                    console.error('Failed to send message:', error);
-                    this.showToast('Failed to send message', 'error');
-                }
-            },
-
-            addChatMessage: function(msg) {
-                const chatMessages = document.querySelector('.chat-messages');
-                const messageDiv = document.createElement('div');
-                messageDiv.className = `chat-message${msg.fromMe ? ' from-me' : ''}`;
-                if (msg.pubkey) {
-                    messageDiv.dataset.pubkey = msg.pubkey;
-                }
-                
-                // Format timestamp
-                const time = new Date(msg.created_at * 1000).toLocaleTimeString();
-                
-                // Create message content
-                messageDiv.innerHTML = `
-                    <span class="username">${msg.pubkey.slice(0, 8)}...</span>
-                    <span class="time">${time}</span>
-                    <div class="content">${this.escapeHTML(msg.content)}</div>
-                `;
-                
-                chatMessages.appendChild(messageDiv);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            },
-
-            escapeHTML: function(str) {
-                const div = document.createElement('div');
-                div.textContent = str;
-                return div.innerHTML;
-            },
-
-            connectToNewRelay: async function(url) {
-                try {
-                    const relay = await this.connectRelay(url);
-                    if (relay) {
-                        this.explorerRelays.set(url, relay);
-                        this.updateRelaySelector(url);
-                        this.showToast(`Connected to ${url}`, 'success');
-                    }
-                } catch (error) {
-                    this.showToast(`Failed to connect to ${url}`, 'error');
-                }
-            }
+        // Show loading state
+        const loginButton = document.getElementById('login-button');
+        loginButton.innerHTML = '<span class="spinner"></span> Connecting...';
+        loginButton.disabled = true;
+        
+        // Get public key
+        const pubkey = await window.nostr.getPublicKey();
+        
+        // Initialize player
+        this.player = {
+          pubkey,
+          x: WORLD_SIZE / 2,
+          y: WORLD_SIZE / 2,
+          score: 0,
+          inventory: [],
+          following: new Set(),
+          profile: null
         };
         
-        // Initialize game when DOM is loaded
-        document.addEventListener('DOMContentLoaded', function() {
-            RelayWorld.init();
+        // Connect to relays
+        await this.connectToRelays();
+        
+        // Load player profile
+        await this.loadPlayerProfile();
+        
+        // Generate world items
+        this.generateWorldItems();
+        
+        // Update UI
+        this.updateUI();
+        
+        // Hide login screen
+        loginScreen.style.opacity = 0;
+        setTimeout(() => {
+          loginScreen.style.display = 'none';
+        }, 500);
+        
+        // Show welcome message
+        this.showToast("Welcome to Relay World!", "success");
+      } catch (error) {
+        console.error("Login error:", error);
+        this.showToast("Login failed: " + error.message, "error");
+        
+        // Reset login button
+        const loginButton = document.getElementById('login-button');
+        loginButton.innerHTML = 'CONNECT WITH NOSTR';
+        loginButton.disabled = false;
+      }
+    },
+    
+    // Connect to relays
+    connectToRelays: async function() {
+      try {
+        // Default relays
+        const gameRelayUrl = "wss://relay.damus.io"; // Using damus as game relay for testing
+        const loginRelayUrl = "wss://relay.damus.io";
+        const explorerRelays = [
+          "wss://relay.damus.io",
+          "wss://nos.lol"
+        ];
+        
+        // Connect to game relay
+        this.showToast("Connecting to game relay...", "info");
+        this.gameRelay = await this.connectRelay(gameRelayUrl);
+        
+        // Connect to login relay
+        this.loginRelay = await this.connectRelay(loginRelayUrl);
+        
+        // Connect to explorer relays
+        for (const url of explorerRelays) {
+          try {
+            const relay = await this.connectRelay(url);
+            this.explorerRelays.set(url, relay);
+          } catch (error) {
+            console.warn(`Failed to connect to explorer relay ${url}:`, error);
+          }
+        }
+        
+        // Set active explorer relay
+        if (this.explorerRelays.size > 0) {
+          this.activeExplorerRelay = explorerRelays[0];
+        }
+        
+        // Subscribe to events if game relay is connected
+        if (this.gameRelay) {
+          this.subscribeToEvents();
+        }
+        
+        // Update relay selector
+        this.updateRelaySelector();
+      } catch (error) {
+        console.error("Relay connection error:", error);
+        throw error;
+      }
+    },
+    
+    // Connect to a single relay
+    connectRelay: function(url) {
+      return new Promise((resolve, reject) => {
+        try {
+          console.log(`Connecting to relay: ${url}`);
+          
+          // Initialize relay using NostrTools
+          let relay;
+          try {
+            relay = NostrTools.relayInit(url);
+          } catch (error) {
+            console.error("Failed to initialize relay:", error);
+            reject(new Error(`Failed to initialize relay: ${error.message}`));
+            return;
+          }
+          
+          relay.on('connect', () => {
+            console.log(`Connected to ${url}`);
+            resolve(relay);
+          });
+          
+          relay.on('error', (error) => {
+            console.error(`Error connecting to ${url}:`, error);
+            reject(new Error(`Failed to connect to ${url}`));
+          });
+          
+          relay.connect();
+        } catch (error) {
+          console.error(`Error setting up relay ${url}:`, error);
+          reject(error);
+        }
+      });
+    },
+    
+    // Subscribe to events from relays
+    subscribeToEvents: function() {
+      if (!this.gameRelay) {
+        console.error("Game relay not connected");
+        return;
+      }
+      
+      try {
+        // Subscribe to game events from game relay
+        const gameFilter = [{ kinds: [1, 420001, 420002, 420010] }];
+        const gameSub = this.gameRelay.sub(gameFilter);
+        
+        gameSub.on('event', event => {
+          this.processGameEvent(event);
         });
-    </script>
+        
+        this.subscriptions.set('game', gameSub);
+        
+        // Subscribe to explorer content
+        if (this.activeExplorerRelay) {
+          const exploreRelay = this.explorerRelays.get(this.activeExplorerRelay);
+          if (exploreRelay) {
+            // Subscribe to kind 1 notes
+            const kindSub = exploreRelay.sub([{ kinds: [1], limit: 50 }]);
+            kindSub.on('event', event => {
+              this.processExplorerEvent(event);
+            });
+            this.subscriptions.set('explorer', kindSub);
+            
+            // Subscribe to profiles
+            const profileSub = exploreRelay.sub([{ kinds: [0], limit: 20 }]);
+            profileSub.on('event', event => {
+              this.processExplorerEvent(event);
+            });
+            this.subscriptions.set('profiles', profileSub);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to subscribe to events:", error);
+      }
+    },
+    
+    // Process game event
+    processGameEvent: function(event) {
+      if (!event || !event.kind) return;
+      
+      try {
+        switch (event.kind) {
+          case 1: // Note (global chat)
+            this.handleChatEvent(event);
+            break;
+          case 420001: // Position
+            this.handlePositionEvent(event);
+            break;
+          case 420002: // Stats
+            this.handleStatsEvent(event);
+            break;
+          case 420010: // Chat
+            this.handleChatEvent(event);
+            break;
+          // Handle other event kinds...
+        }
+      } catch (error) {
+        console.error("Error processing game event:", error);
+      }
+    },
+    
+    // Process explorer event
+    processExplorerEvent: function(event) {
+      if (!event || !event.pubkey) return;
+      
+      try {
+        // Create user if not exists
+        if (!this.users.has(event.pubkey) && event.pubkey !== this.player?.pubkey) {
+          // Generate deterministic position from pubkey
+          const hash = event.pubkey;
+          const x = parseInt(hash.substring(0, 8), 16) % WORLD_SIZE;
+          const y = parseInt(hash.substring(8, 16), 16) % WORLD_SIZE;
+          
+          this.users.set(event.pubkey, {
+            pubkey: event.pubkey,
+            x, y,
+            profile: null,
+            notes: []
+          });
+        }
+        
+        // Process based on kind
+        switch (event.kind) {
+          case 0: // Profile
+            this.handleProfileEvent(event);
+            break;
+          case 1: // Note
+            this.handleNoteEvent(event);
+            break;
+          case 3: // Contacts
+            this.handleContactsEvent(event);
+            break;
+        }
+      } catch (error) {
+        console.error("Error processing explorer event:", error);
+      }
+    },
+    
+    // Handle player position event
+    handlePositionEvent: function(event) {
+      try {
+        if (!event.content) return;
+        
+        const position = JSON.parse(event.content);
+        
+        // Update user position
+        if (this.users.has(event.pubkey)) {
+          const user = this.users.get(event.pubkey);
+          user.x = position.x;
+          user.y = position.y;
+        } else if (event.pubkey !== this.player?.pubkey) {
+          // New player joined
+          this.users.set(event.pubkey, {
+            pubkey: event.pubkey,
+            x: position.x,
+            y: position.y,
+            profile: null,
+            notes: []
+          });
+        }
+      } catch (e) {
+        console.error('Invalid position event:', e);
+      }
+    },
+    
+    // Handle stats event
+    handleStatsEvent: function(event) {
+      try {
+        if (!event.content) return;
+        
+        const stats = JSON.parse(event.content);
+        const user = this.users.get(event.pubkey);
+        
+        if (user) {
+          user.score = stats.score || 0;
+          // Update other stats...
+        }
+      } catch (e) {
+        console.error('Invalid stats event:', e);
+      }
+    },
+    
+    // Handle chat event
+    handleChatEvent: function(event) {
+      // Skip processing if this is our own message
+      if (this.player && event.pubkey === this.player.pubkey) return;
+      
+      const user = this.users.get(event.pubkey) || 
+        (event.pubkey === this.player?.pubkey ? { profile: this.player.profile } : null);
+      
+      const name = user?.profile?.name || event.pubkey.substring(0, 8);
+      this.addChatMessage(name, event.content);
+    },
+    
+    // Handle profile event
+    handleProfileEvent: function(event) {
+      try {
+        if (!event.content) return;
+        
+        let profile;
+        try {
+          profile = JSON.parse(event.content);
+        } catch (e) {
+          console.error("Invalid profile JSON:", e);
+          return;
+        }
+        
+        // Update user profile
+        if (this.users.has(event.pubkey)) {
+          const user = this.users.get(event.pubkey);
+          user.profile = {
+            name: profile.name || profile.display_name || event.pubkey.substring(0, 8),
+            picture: profile.picture || null,
+            about: profile.about || "",
+            lud16: profile.lud16 || null
+          };
+        }
+        
+        // Update player profile if this is the current player
+        if (this.player && event.pubkey === this.player.pubkey) {
+          this.player.profile = {
+            name: profile.name || profile.display_name || event.pubkey.substring(0, 8),
+            picture: profile.picture || null,
+            about: profile.about || "",
+            lud16: profile.lud16 || null
+          };
+          this.updateUI();
+        }
+      } catch (e) {
+        console.error('Error processing profile event:', e);
+      }
+    },
+    
+    // Handle note event
+    handleNoteEvent: function(event) {
+      if (this.users.has(event.pubkey)) {
+        const user = this.users.get(event.pubkey);
+        
+        // Add to user's notes
+        user.notes.unshift({
+          id: event.id,
+          content: event.content,
+          created_at: event.created_at
+        });
+        
+        // Limit to 20 notes
+        if (user.notes.length > 20) {
+          user.notes.pop();
+        }
+      }
+    },
+    
+    // Handle contacts event
+    handleContactsEvent: function(event) {
+      // Process follows
+      if (this.player && event.pubkey === this.player.pubkey) {
+        // Clear existing follows
+        this.player.following = new Set();
+        
+        // Add each p-tag as a follow
+        for (const tag of event.tags) {
+          if (tag[0] === 'p') {
+            this.player.following.add(tag[1]);
+          }
+        }
+      }
+    },
+    
+    // Load player profile
+    loadPlayerProfile: async function() {
+      if (!this.player || !this.loginRelay) return;
+      
+      // Request profile from login relay
+      const filter = { kinds: [0], authors: [this.player.pubkey], limit: 1 };
+      try {
+        const profileSub = this.loginRelay.sub([filter]);
+        
+        profileSub.on('event', event => {
+          this.processExplorerEvent(event);
+        });
+        
+        // Request follows
+        const followsSub = this.loginRelay.sub([{ kinds: [3], authors: [this.player.pubkey], limit: 1 }]);
+        followsSub.on('event', event => {
+          this.processExplorerEvent(event);
+        });
+      } catch (error) {
+        console.error("Failed to subscribe to profile events:", error);
+      }
+    },
+    
+    // Generate world items
+    generateWorldItems: function() {
+      // Generate collectibles
+      for (let i = 0; i < 40; i++) {
+        const x = Math.random() * WORLD_SIZE;
+        const y = Math.random() * WORLD_SIZE;
+        
+        this.items.push({
+          id: `item-${Date.now()}-${i}`,
+          x, y,
+          value: 10 + Math.floor(Math.random() * 90),
+          emoji: ["💎", "🍎", "🔑", "📜", "🪙"][Math.floor(Math.random() * 5)]
+        });
+      }
+      
+      // Generate treasures
+      for (let i = 0; i < 5; i++) {
+        const x = Math.random() * WORLD_SIZE;
+        const y = Math.random() * WORLD_SIZE;
+        
+        this.treasures.push({
+          id: `treasure-${Date.now()}-${i}`,
+          x, y,
+          unlocking: false
+        });
+      }
+    },
+    
+    // Set up event listeners
+    setupEventListeners: function() {
+      // Keyboard controls
+      window.addEventListener('keydown', e => {
+        if (!this.player) return;
+        switch (e.key) {
+          case 'ArrowUp':
+          case 'w':
+          case 'W':
+            this.input.up = true;
+            break;
+          case 'ArrowDown':
+          case 's':
+          case 'S':
+            this.input.down = true;
+            break;
+          case 'ArrowLeft':
+          case 'a':
+          case 'A':
+            this.input.left = true;
+            break;
+          case 'ArrowRight':
+          case 'd':
+          case 'D':
+            this.input.right = true;
+            break;
+          case 'e':
+          case 'E':
+          case ' ':
+            this.triggerInteraction();
+            break;
+          case 'z':
+          case 'Z':
+            this.triggerZap();
+            break;
+        }
+      });
+      
+      window.addEventListener('keyup', e => {
+        if (!this.player) return;
+        switch (e.key) {
+          case 'ArrowUp':
+          case 'w':
+          case 'W':
+            this.input.up = false;
+            break;
+          case 'ArrowDown':
+          case 's':
+          case 'S':
+            this.input.down = false;
+            break;
+          case 'ArrowLeft':
+          case 'a':
+          case 'A':
+            this.input.left = false;
+            break;
+          case 'ArrowRight':
+          case 'd':
+          case 'D':
+            this.input.right = false;
+            break;
+        }
+      });
+      
+      // Canvas click for interactions
+      canvas.addEventListener('click', e => {
+        if (!this.player) return;
+        
+        // Convert click to world coordinates
+        const rect = canvas.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const worldX = screenX + this.camera.x - canvas.width / 2;
+        const worldY = screenY + this.camera.y - canvas.height / 2;
+        
+        // Check for user click
+        for (const [pubkey, user] of this.users) {
+          const distance = Math.sqrt(
+            Math.pow(user.x - worldX, 2) + 
+            Math.pow(user.y - worldY, 2)
+          );
+          
+          if (distance < 30) {
+            this.showUserPopup(pubkey);
+            return;
+          }
+        }
+      });
+      
+      // UI elements
+      document.getElementById('send-chat-button').addEventListener('click', () => this.sendChatMessage());
+      document.getElementById('chat-input').addEventListener('keyup', e => {
+        if (e.key === 'Enter') this.sendChatMessage();
+      });
+      document.getElementById('user-popup-close').addEventListener('click', () => this.hideUserPopup());
+      document.getElementById('follow-button').addEventListener('click', () => this.toggleFollowUser());
+      document.getElementById('voice-toggle').addEventListener('click', () => this.toggleVoiceChat());
+      document.getElementById('zap-button').addEventListener('click', () => this.initiateZap());
+      document.getElementById('zap-close').addEventListener('click', () => {
+        document.getElementById('zap-interface').style.display = 'none';
+      });
+      document.getElementById('zap-send-button').addEventListener('click', () => this.sendZap());
+      document.getElementById('relay-selector').addEventListener('change', e => {
+        this.setActiveExplorerRelay(e.target.value);
+      });
+      document.getElementById('add-relay-button').addEventListener('click', () => {
+        const url = prompt("Enter relay URL (wss://...):");
+        if (url) this.addCustomRelay(url);
+      });
+      
+      // Adding click handlers for preset zap amounts
+      document.querySelectorAll('.zap-preset').forEach(button => {
+        button.addEventListener('click', () => {
+          document.getElementById('zap-amount').value = button.dataset.amount;
+        });
+      });
+    },
+    
+    // Game loop
+    gameLoop: function() {
+      // Only update if player exists
+      if (this.player) {
+        this.update();
+      }
+      
+      this.render();
+      requestAnimationFrame(() => this.gameLoop());
+    },
+    
+    // Update game state
+    update: function() {
+      if (!this.player) return;
+      
+      // Update player position
+      let dx = 0, dy = 0;
+      if (this.input.up) dy -= 1;
+      if (this.input.down) dy += 1;
+      if (this.input.left) dx -= 1;
+      if (this.input.right) dx += 1;
+      
+      // Normalize diagonal movement
+      if (dx !== 0 && dy !== 0) {
+        const len = Math.sqrt(dx * dx + dy * dy);
+        dx /= len;
+        dy /= len;
+      }
+      
+      // Apply movement
+      if (dx !== 0 || dy !== 0) {
+        this.player.x += dx * 5;
+        this.player.y += dy * 5;
+        
+        // Constrain to world bounds
+        this.player.x = Math.max(0, Math.min(this.player.x, WORLD_SIZE));
+        this.player.y = Math.max(0, Math.min(this.player.y, WORLD_SIZE));
+        
+        // Publish position update
+        this.publishPlayerPosition();
+      }
+      
+      // Update camera
+      this.camera.x = this.player.x;
+      this.camera.y = this.player.y;
+      
+      // Check for collectible pickup
+      this.checkCollectibles();
+      
+      // Update voice connections
+      if (this.audio.isVoiceChatActive) {
+        this.updateVoiceConnections();
+      }
+    },
+    
+    // Render the game
+    render: function() {
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw background grid
+      this.drawGrid();
+      
+      // Draw world boundary
+      ctx.strokeStyle = 'rgba(139, 172, 15, 0.5)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(
+        -this.camera.x + canvas.width / 2, 
+        -this.camera.y + canvas.height / 2, 
+        WORLD_SIZE, 
+        WORLD_SIZE
+      );
+      
+      // Draw items
+      for (const item of this.items) {
+        this.drawItem(item);
+      }
+      
+      // Draw treasures
+      for (const treasure of this.treasures) {
+        this.drawTreasure(treasure);
+      }
+      
+      // Draw portals
+      for (const portal of this.portals) {
+        this.drawPortal(portal);
+      }
+      
+      // Draw other players
+      for (const [_, user] of this.users) {
+        this.drawUser(user);
+      }
+      
+      // Draw player in center
+      if (this.player) {
+        this.drawPlayer();
+      }
+      
+      // Draw voice chat indicators
+      if (this.player && this.audio.isVoiceChatActive) {
+        this.drawVoiceRange();
+      }
+      
+      // Update mini-map
+      if (this.player) {
+        this.updateMiniMap();
+      }
+    },
+    
+    // Draw background grid
+    drawGrid: function() {
+      ctx.strokeStyle = 'rgba(139, 172, 15, 0.1)';
+      ctx.lineWidth = 1;
+      
+      const gridSize = 50;
+      const startX = Math.floor(this.camera.x / gridSize) * gridSize;
+      const startY = Math.floor(this.camera.y / gridSize) * gridSize;
+      const offsetX = startX - this.camera.x + canvas.width / 2;
+      const offsetY = startY - this.camera.y + canvas.height / 2;
+      
+      // Vertical lines
+      for (let x = 0; x <= canvas.width / gridSize + 1; x++) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX + x * gridSize, 0);
+        ctx.lineTo(offsetX + x * gridSize, canvas.height);
+        ctx.stroke();
+      }
+      
+      // Horizontal lines
+      for (let y = 0; y <= canvas.height / gridSize + 1; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, offsetY + y * gridSize);
+        ctx.lineTo(canvas.width, offsetY + y * gridSize);
+        ctx.stroke();
+      }
+    },
+    
+    // Draw a collectible item
+    drawItem: function(item) {
+      // Calculate screen position
+      const screenX = item.x - this.camera.x + canvas.width / 2;
+      const screenY = item.y - this.camera.y + canvas.height / 2;
+      
+      // Skip if out of view
+      if (screenX < -20 || screenX > canvas.width + 20 ||
+          screenY < -20 || screenY > canvas.height + 20) {
+        return;
+      }
+      
+      // Draw item
+      ctx.font = "20px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(item.emoji, screenX, screenY);
+    },
+    
+    // Draw a treasure
+    drawTreasure: function(treasure) {
+      // Calculate screen position
+      const screenX = treasure.x - this.camera.x + canvas.width / 2;
+      const screenY = treasure.y - this.camera.y + canvas.height / 2;
+      
+      // Skip if out of view
+      if (screenX < -20 || screenX > canvas.width + 20 ||
+          screenY < -20 || screenY > canvas.height + 20) {
+        return;
+      }
+      
+      // Draw treasure
+      ctx.font = "24px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("🎁", screenX, screenY);
+      
+      // Draw unlock progress if unlocking
+      if (treasure.unlocking) {
+        const elapsed = (Date.now() - treasure.unlockStart) / 3000;
+        ctx.fillStyle = "rgba(255, 215, 0, 0.3)";
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 25, 0, Math.PI * 2 * Math.min(elapsed, 1));
+        ctx.fill();
+      }
+    },
+    
+    // Draw a portal
+    drawPortal: function(portal) {
+      // Calculate screen position
+      const screenX = portal.x - this.camera.x + canvas.width / 2;
+      const screenY = portal.y - this.camera.y + canvas.height / 2;
+      
+      // Skip if out of view
+      if (screenX < -30 || screenX > canvas.width + 30 ||
+          screenY < -30 || screenY > canvas.height + 30) {
+        return;
+      }
+      
+      // Draw portal
+      const gradient = ctx.createRadialGradient(
+        screenX, screenY, 5,
+        screenX, screenY, 25
+      );
+      gradient.addColorStop(0, portal.color);
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, 25, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw inner circle
+      ctx.fillStyle = '#FFFFFF';
+      ctx.globalAlpha = 0.5 + 0.5 * Math.sin(Date.now() * 0.003);
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+    },
+    
+    // Draw another user
+    drawUser: function(user) {
+      // Calculate screen position
+      const screenX = user.x - this.camera.x + canvas.width / 2;
+      const screenY = user.y - this.camera.y + canvas.height / 2;
+      
+      // Skip if out of view
+      if (screenX < -50 || screenX > canvas.width + 50 ||
+          screenY < -50 || screenY > canvas.height + 50) {
+        return;
+      }
+      
+      // Draw avatar
+      if (user.profile && user.profile.picture) {
+        const img = new Image();
+        img.src = user.profile.picture;
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 15, 0, Math.PI * 2);
+        ctx.clip();
+        
+        // Try to draw image, fall back to colored circle
+        try {
+          ctx.drawImage(img, screenX - 15, screenY - 15, 30, 30);
+        } catch (e) {
+          ctx.fillStyle = '#' + user.pubkey.substring(0, 6);
+          ctx.fill();
+        }
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#' + user.pubkey.substring(0, 6);
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 15, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Draw name
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '12px "VT323", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(user.profile?.name || user.pubkey.substring(0, 8), screenX, screenY - 20);
+      
+      // Draw speech indicator if talking
+      if (this.audio.isVoiceChatActive && this.audio.connections[user.pubkey]) {
+        ctx.fillStyle = '#8BAC0F';
+        ctx.beginPath();
+        ctx.arc(screenX, screenY - 30, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+    
+    // Draw the player
+    drawPlayer: function() {
+      if (!this.player) return;
+      
+      const screenX = canvas.width / 2;
+      const screenY = canvas.height / 2;
+      
+      // Draw avatar
+      if (this.player.profile && this.player.profile.picture) {
+        const img = new Image();
+        img.src = this.player.profile.picture;
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 15, 0, Math.PI * 2);
+        ctx.clip();
+        
+        // Try to draw image, fall back to colored circle
+        try {
+          ctx.drawImage(img, screenX - 15, screenY - 15, 30, 30);
+        } catch (e) {
+          ctx.fillStyle = '#8BAC0F';
+          ctx.fill();
+        }
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#8BAC0F';
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 15, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Draw name
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '12px "VT323", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(this.player.profile?.name || this.player.pubkey.substring(0, 8), screenX, screenY - 20);
+    },
+    
+    // Draw voice chat range
+    drawVoiceRange: function() {
+      if (!this.audio.isVoiceChatActive) return;
+      
+      ctx.strokeStyle = 'rgba(139, 172, 15, 0.2)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.arc(canvas.width / 2, canvas.height / 2, VOICE_RANGE, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    },
+    
+    // Update mini-map
+    updateMiniMap: function() {
+      if (!this.player) return;
+      
+      // Clear mini-map
+      miniMapCtx.clearRect(0, 0, 150, 150);
+      
+      // Draw background
+      miniMapCtx.fillStyle = 'rgba(30, 30, 30, 0.8)';
+      miniMapCtx.fillRect(0, 0, 150, 150);
+      
+      // Calculate scale
+      const scale = 150 / WORLD_SIZE;
+      
+      // Draw items
+      miniMapCtx.fillStyle = '#FFD700';
+      for (const item of this.items) {
+        miniMapCtx.beginPath();
+        miniMapCtx.arc(item.x * scale, item.y * scale, 2, 0, Math.PI * 2);
+        miniMapCtx.fill();
+      }
+      
+      // Draw treasures
+      miniMapCtx.fillStyle = '#FF8C00';
+      for (const treasure of this.treasures) {
+        miniMapCtx.beginPath();
+        miniMapCtx.arc(treasure.x * scale, treasure.y * scale, 3, 0, Math.PI * 2);
+        miniMapCtx.fill();
+      }
+      
+      // Draw other players
+      miniMapCtx.fillStyle = '#FFFFFF';
+      for (const [_, user] of this.users) {
+        miniMapCtx.beginPath();
+        miniMapCtx.arc(user.x * scale, user.y * scale, 2, 0, Math.PI * 2);
+        miniMapCtx.fill();
+      }
+      
+      // Draw player
+      miniMapCtx.fillStyle = '#8BAC0F';
+      miniMapCtx.beginPath();
+      miniMapCtx.arc(this.player.x * scale, this.player.y * scale, 3, 0, Math.PI * 2);
+      miniMapCtx.fill();
+      
+      // Draw voice range if active
+      if (this.audio.isVoiceChatActive) {
+        miniMapCtx.strokeStyle = 'rgba(139, 172, 15, 0.5)';
+        miniMapCtx.beginPath();
+        miniMapCtx.arc(this.player.x * scale, this.player.y * scale, VOICE_RANGE * scale, 0, Math.PI * 2);
+        miniMapCtx.stroke();
+      }
+    },
+    
+    // Check for collectible pickup
+    checkCollectibles: function() {
+      for (let i = 0; i < this.items.length; i++) {
+        const item = this.items[i];
+        const distance = Math.sqrt(
+          Math.pow(this.player.x - item.x, 2) + 
+          Math.pow(this.player.y - item.y, 2)
+        );
+        
+        if (distance < 30) {
+          // Add to inventory
+          this.player.inventory.push(item);
+          
+          // Update score
+          this.player.score += item.value;
+          this.updateScoreDisplay();
+          
+          // Remove from world
+          this.items.splice(i, 1);
+          i--;
+          
+          // Create effect
+          this.createCollectEffect(item.x, item.y);
+          
+          // Show toast
+          this.showToast(`Found ${item.emoji}! +${item.value} points`, "success");
+          
+          // Publish updated stats
+          this.publishPlayerStats();
+          
+          break;
+        }
+      }
+    },
+    
+    // Create collection effect
+    createCollectEffect: function(x, y) {
+      // Calculate screen position
+      const screenX = x - this.camera.x + canvas.width / 2;
+      const screenY = y - this.camera.y + canvas.height / 2;
+      
+      // Create effect element
+      const effect = document.createElement('div');
+      effect.className = 'collect-effect';
+      effect.style.position = 'absolute';
+      effect.style.left = `${screenX - 20}px`;
+      effect.style.top = `${screenY - 20}px`;
+      effect.style.width = '40px';
+      effect.style.height = '40px';
+      document.body.appendChild(effect);
+      
+      // Remove after animation
+      setTimeout(() => effect.remove(), 500);
+    },
+    
+    // Publish player position
+    publishPlayerPosition: (function() {
+      let lastPublish = 0;
+      const PUBLISH_INTERVAL = 200; // 5x per second
+      
+      return function() {
+        if (!this.player || !this.gameRelay) return;
+        
+        const now = Date.now();
+        if (now - lastPublish < PUBLISH_INTERVAL) return;
+        lastPublish = now;
+        
+        const event = {
+          kind: 420001,
+          content: JSON.stringify({ x: this.player.x, y: this.player.y }),
+          tags: [["t", "position"]],
+          created_at: Math.floor(now / 1000),
+          pubkey: this.player.pubkey
+        };
+        
+        this.signAndPublish(event, this.gameRelay);
+      };
+    })(),
+    
+    // Publish player stats
+    publishPlayerStats: function() {
+      if (!this.player || !this.gameRelay) return;
+      
+      const event = {
+        kind: 420002,
+        content: JSON.stringify({
+          score: this.player.score,
+          itemsCollected: this.player.inventory.length
+        }),
+        tags: [["t", "stats"]],
+        created_at: Math.floor(Date.now() / 1000),
+        pubkey: this.player.pubkey
+      };
+      
+      this.signAndPublish(event, this.gameRelay);
+    },
+    
+    // Sign and publish an event
+    signAndPublish: async function(event, relay) {
+      if (!relay) {
+        console.error('Cannot publish to null relay');
+        return null;
+      }
+      
+      try {
+        const signedEvent = await window.nostr.signEvent(event);
+        relay.publish(signedEvent);
+        return signedEvent;
+      } catch (error) {
+        console.error('Failed to sign and publish event:', error);
+        return null;
+      }
+    },
+    
+    // Send chat message
+    sendChatMessage: function() {
+      if (!this.player || !this.gameRelay) {
+        this.showToast("Cannot send message - not connected to game relay", "error");
+        return;
+      }
+      
+      const input = document.getElementById('chat-input');
+      const message = input.value.trim();
+      if (!message) return;
+      
+      const event = {
+        kind: 1, // Using kind 1 for chat
+        content: message,
+        tags: [["t", "chat"]],
+        created_at: Math.floor(Date.now() / 1000),
+        pubkey: this.player.pubkey
+      };
+      
+      this.signAndPublish(event, this.gameRelay)
+        .then(signedEvent => {
+          if (signedEvent) {
+            input.value = '';
+            // Add to chat display
+            const name = this.player.profile?.name || this.player.pubkey.substring(0, 8);
+            this.addChatMessage(name, message, true);
+          }
+        })
+        .catch(error => {
+          console.error("Failed to send chat message:", error);
+          this.showToast("Failed to send message", "error");
+        });
+    },
+    
+    // Add message to chat display
+    addChatMessage: function(username, message, isFromMe = false) {
+      const chatMessages = document.getElementById('chat-messages');
+      
+      const messageEl = document.createElement('div');
+      messageEl.className = isFromMe ? 'chat-message from-me' : 'chat-message';
+      
+      const usernameSpan = document.createElement('span');
+      usernameSpan.className = 'username';
+      usernameSpan.textContent = username;
+      
+      const contentSpan = document.createElement('span');
+      contentSpan.className = 'content';
+      contentSpan.textContent = message;
+      
+      messageEl.appendChild(usernameSpan);
+      messageEl.appendChild(document.createTextNode(': '));
+      messageEl.appendChild(contentSpan);
+      
+      chatMessages.appendChild(messageEl);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    },
+    
+    // Show user popup
+    showUserPopup: function(pubkey) {
+      const user = this.users.get(pubkey);
+      if (!user) return;
+      
+      const popup = document.getElementById('user-popup');
+      popup.dataset.pubkey = pubkey;
+      
+      document.getElementById('user-popup-image').src = user.profile?.picture || '';
+      document.getElementById('user-popup-name').textContent = user.profile?.name || pubkey.substring(0, 8);
+      document.getElementById('user-popup-npub').textContent = pubkey.substring(0, 8) + '...';
+      
+      // Update follow button
+      const followButton = document.getElementById('follow-button');
+      followButton.textContent = this.player.following.has(pubkey) ? 'Unfollow' : 'Follow';
+      
+      // Update notes
+      const notesContainer = document.getElementById('user-notes');
+      notesContainer.innerHTML = '';
+      
+      if (user.notes && user.notes.length > 0) {
+        for (let i = 0; i < Math.min(user.notes.length, 5); i++) {
+          const note = user.notes[i];
+          
+          const noteEl = document.createElement('div');
+          noteEl.className = 'user-note';
+          noteEl.textContent = note.content;
+          
+          notesContainer.appendChild(noteEl);
+        }
+      } else {
+        notesContainer.innerHTML = '<div class="no-notes">No notes found</div>';
+      }
+      
+      popup.style.display = 'block';
+    },
+    
+    // Hide user popup
+    hideUserPopup: function() {
+      document.getElementById('user-popup').style.display = 'none';
+    },
+    
+    // Toggle follow user
+    toggleFollowUser: async function() {
+      const popup = document.getElementById('user-popup');
+      const pubkey = popup.dataset.pubkey;
+      if (!pubkey || !this.player || !this.loginRelay) return;
+      
+      // Check if already following
+      const isFollowing = this.player.following.has(pubkey);
+      
+      if (isFollowing) {
+        // Remove from following set
+        this.player.following.delete(pubkey);
+      } else {
+        // Add to following set
+        this.player.following.add(pubkey);
+      }
+      
+      // Update follow button
+      document.getElementById('follow-button').textContent = isFollowing ? 'Follow' : 'Unfollow';
+      
+      // Create tags array with all follows
+      const tags = Array.from(this.player.following).map(pk => ['p', pk]);
+      
+      // Create follow event
+      const event = {
+        kind: 3,
+        content: "",
+        tags: tags,
+        created_at: Math.floor(Date.now() / 1000),
+        pubkey: this.player.pubkey
+      };
+      
+      // Sign and publish to login relay
+      this.signAndPublish(event, this.loginRelay);
+      
+      // Show toast
+      this.showToast(isFollowing ? 'Unfollowed user' : 'Following user', isFollowing ? 'info' : 'success');
+    },
+    
+    // Toggle voice chat
+    toggleVoiceChat: async function() {
+      if (this.audio.isVoiceChatActive) {
+        // Stop voice chat
+        this.stopVoiceChat();
+      } else {
+        // Start voice chat
+        await this.startVoiceChat();
+      }
+    },
+    
+    // Start voice chat
+    startVoiceChat: async function() {
+      try {
+        // Check if navigator.mediaDevices is available
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          this.showToast("Voice chat not supported in this browser", "error");
+          return;
+        }
+        
+        // Request microphone access
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true
+          },
+          video: false
+        });
+        
+        this.audio.localStream = stream;
+        
+        // Check if PeerJS is available
+        if (typeof Peer === 'undefined') {
+          this.showToast("PeerJS not loaded, voice chat unavailable", "error");
+          return;
+        }
+        
+        // Initialize PeerJS
+        this.audio.peer = new Peer(this.player.pubkey.substring(0, 12), {
+          debug: 0
+        });
+        
+        // Handle peer open
+        this.audio.peer.on('open', (id) => {
+          console.log('PeerJS connected with ID:', id);
+          
+          // Handle incoming calls
+          this.audio.peer.on('call', call => {
+            console.log('Incoming call from:', call.peer);
+            call.answer(this.audio.localStream);
+            
+            call.on('stream', remoteStream => {
+              console.log('Received remote stream');
+              // Create audio element for remote stream
+              const audio = document.createElement('audio');
+              audio.srcObject = remoteStream;
+              audio.autoplay = true;
+              document.body.appendChild(audio);
+              
+              // Store audio element with connection
+              const remotePubkey = call.peer;
+              if (!this.audio.connections[remotePubkey]) {
+                this.audio.connections[remotePubkey] = {};
+              }
+              this.audio.connections[remotePubkey].audio = audio;
+            });
+          });
+          
+          // Connect to nearby users
+          this.connectToNearbyUsers();
+          
+          // Update UI
+          this.audio.isVoiceChatActive = true;
+          document.getElementById('voice-icon').textContent = '🔊';
+          document.getElementById('voice-indicator').style.backgroundColor = '#10B981';
+          
+          // Show notification
+          this.showToast('Voice chat activated', 'success');
+        });
+        
+        // Handle peer errors
+        this.audio.peer.on('error', (error) => {
+          console.error('PeerJS error:', error);
+          this.showToast('Voice chat error: ' + error.type, 'error');
+        });
+        
+      } catch (error) {
+        console.error('Failed to start voice chat:', error);
+        this.showToast('Failed to start voice chat: ' + error.message, 'error');
+      }
+    },
+    
+    // Stop voice chat
+    stopVoiceChat: function() {
+      // Stop local stream
+      if (this.audio.localStream) {
+        this.audio.localStream.getTracks().forEach(track => track.stop());
+        this.audio.localStream = null;
+      }
+      
+      // Close peer connections
+      for (const pubkey in this.audio.connections) {
+        const conn = this.audio.connections[pubkey];
+        if (conn.call) conn.call.close();
+        if (conn.audio) conn.audio.remove();
+      }
+      
+      // Close peer
+      if (this.audio.peer) {
+        this.audio.peer.destroy();
+        this.audio.peer = null;
+      }
+      
+      // Clear connections
+      this.audio.connections = {};
+      
+      // Update UI
+      this.audio.isVoiceChatActive = false;
+      document.getElementById('voice-icon').textContent = '🎙️';
+      document.getElementById('voice-indicator').style.backgroundColor = '#555';
+      
+      // Show notification
+      this.showToast('Voice chat deactivated', 'info');
+    },
+    
+    // Connect to nearby users
+    connectToNearbyUsers: function() {
+      if (!this.audio.isVoiceChatActive || !this.audio.peer || !this.audio.peer.open) return;
+      
+      for (const [pubkey, user] of this.users) {
+        const distance = Math.sqrt(
+          Math.pow(this.player.x - user.x, 2) + 
+          Math.pow(this.player.y - user.y, 2)
+        );
+        
+        if (distance <= VOICE_RANGE && !this.audio.connections[pubkey]) {
+          // Create call
+          console.log('Calling peer:', pubkey.substring(0, 12));
+          try {
+            const call = this.audio.peer.call(pubkey.substring(0, 12), this.audio.localStream);
+            
+            // Handle stream
+            call.on('stream', remoteStream => {
+              console.log('Received remote stream from call');
+              // Create audio element
+              const audio = document.createElement('audio');
+              audio.srcObject = remoteStream;
+              audio.autoplay = true;
+              document.body.appendChild(audio);
+              
+              // Update connection
+              this.audio.connections[pubkey].audio = audio;
+            });
+            
+            // Store connection
+            this.audio.connections[pubkey] = { call, distance };
+          } catch (error) {
+            console.error('Failed to call peer:', error);
+          }
+        }
+      }
+    },
+    
+    // Update voice connections
+    updateVoiceConnections: function() {
+      if (!this.audio.isVoiceChatActive) return;
+      
+      // Check existing connections
+      for (const pubkey in this.audio.connections) {
+        const user = this.users.get(pubkey);
+        if (!user) continue;
+        
+        const distance = Math.sqrt(
+          Math.pow(this.player.x - user.x, 2) + 
+          Math.pow(this.player.y - user.y, 2)
+        );
+        
+        // Update distance
+        this.audio.connections[pubkey].distance = distance;
+        
+        // Update volume based on distance
+        if (this.audio.connections[pubkey].audio) {
+          // Linear falloff from 1.0 (close) to 0.0 (at range limit)
+          const volume = Math.max(0, 1.0 - (distance / VOICE_RANGE));
+          this.audio.connections[pubkey].audio.volume = volume;
+        }
+        
+        // Disconnect if out of range
+        if (distance > VOICE_RANGE) {
+          const conn = this.audio.connections[pubkey];
+          if (conn.call) conn.call.close();
+          if (conn.audio) conn.audio.remove();
+          delete this.audio.connections[pubkey];
+        }
+      }
+      
+      // Connect to new users in range
+      if (this.audio.peer && this.audio.peer.open) {
+        for (const [pubkey, user] of this.users) {
+          if (this.audio.connections[pubkey]) continue;
+          
+          const distance = Math.sqrt(
+            Math.pow(this.player.x - user.x, 2) + 
+            Math.pow(this.player.y - user.y, 2)
+          );
+          
+          if (distance <= VOICE_RANGE) {
+            // Create call
+            try {
+              const call = this.audio.peer.call(pubkey.substring(0, 12), this.audio.localStream);
+              
+              call.on('stream', remoteStream => {
+                // Create audio element
+                const audio = document.createElement('audio');
+                audio.srcObject = remoteStream;
+                audio.autoplay = true;
+                document.body.appendChild(audio);
+                
+                // Update connection
+                this.audio.connections[pubkey].audio = audio;
+              });
+              
+              // Store connection
+              this.audio.connections[pubkey] = { call, distance };
+            } catch (error) {
+              console.error('Failed to call new peer:', error);
+            }
+          }
+        }
+      }
+    },
+    
+    // Trigger interaction with nearby entities
+    triggerInteraction: function() {
+      if (!this.player) return;
+      
+      // Find closest user
+      let closestUser = null;
+      let minDistance = INTERACTION_RANGE;
+      
+      for (const [pubkey, user] of this.users) {
+        const distance = Math.sqrt(
+          Math.pow(this.player.x - user.x, 2) + 
+          Math.pow(this.player.y - user.y, 2)
+        );
+        
+        if (distance < minDistance) {
+          closestUser = pubkey;
+          minDistance = distance;
+        }
+      }
+      
+      if (closestUser) {
+        // Show user popup
+        this.showUserPopup(closestUser);
+        return;
+      }
+      
+      // Check for treasures
+      for (const treasure of this.treasures) {
+        const distance = Math.sqrt(
+          Math.pow(this.player.x - treasure.x, 2) + 
+          Math.pow(this.player.y - treasure.y, 2)
+        );
+        
+        if (distance < 50 && !treasure.unlocking) {
+          treasure.unlocking = true;
+          treasure.unlockStart = Date.now();
+          
+          // Set timeout to open after 3 seconds
+          setTimeout(() => {
+            if (!treasure.unlocking) return;
+            
+            // Add score
+            this.player.score += 500;
+            this.updateScoreDisplay();
+            
+            // Remove treasure
+            this.treasures = this.treasures.filter(t => t !== treasure);
+            
+            // Show notification
+            this.showToast('Treasure opened! +500 points', 'success');
+            
+            // Publish updated stats
+            this.publishPlayerStats();
+          }, 3000);
+          
+          return;
+        }
+      }
+      
+      // Check for portals
+      for (const portal of this.portals) {
+        const distance = Math.sqrt(
+          Math.pow(this.player.x - portal.x, 2) + 
+          Math.pow(this.player.y - portal.y, 2)
+        );
+        
+        if (distance < 50) {
+          // Find other portal
+          const otherPortal = this.portals.find(p => p.id !== portal.id);
+          if (otherPortal) {
+            // Teleport
+            this.player.x = otherPortal.x;
+            this.player.y = otherPortal.y;
+            
+            // Update camera
+            this.camera.x = this.player.x;
+            this.camera.y = this.player.y;
+            
+            // Show notification
+            this.showToast(`Teleported to ${otherPortal.id}!`, 'success');
+            
+            // Publish position update
+            this.publishPlayerPosition();
+          }
+          return;
+        }
+      }
+    },
+    
+    // Show a toast notification
+    showToast: function(message, type = 'info') {
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = message;
+      
+      const container = document.getElementById('toast-container');
+      container.appendChild(toast);
+      
+      // Remove after 3 seconds
+      setTimeout(() => toast.remove(), 3000);
+    },
+    
+    // Update score display
+    updateScoreDisplay: function() {
+      document.getElementById('score-display').textContent = `Score: ${this.player ? this.player.score : 0}`;
+    },
+    
+    // Update UI elements
+    updateUI: function() {
+      // Update score display
+      this.updateScoreDisplay();
+      
+      // Update relay selector
+      this.updateRelaySelector();
+    },
+    
+    // Update relay selector
+    updateRelaySelector: function() {
+      const selector = document.getElementById('relay-selector');
+      selector.innerHTML = '';
+      
+      for (const [url] of this.explorerRelays) {
+        const option = document.createElement('option');
+        option.value = url;
+        option.textContent = url.replace('wss://', '');
+        option.selected = url === this.activeExplorerRelay;
+        selector.appendChild(option);
+      }
+    },
+    
+    // Set active explorer relay
+    setActiveExplorerRelay: function(url) {
+      if (!this.explorerRelays.has(url)) return;
+      
+      // Change active relay
+      this.activeExplorerRelay = url;
+      
+      // Update subscription
+      const exploreRelay = this.explorerRelays.get(url);
+      
+      // Close existing subscription
+      if (this.subscriptions.has('explorer')) {
+        this.subscriptions.get('explorer').unsub();
+      }
+      
+      // Create new subscription
+      try {
+        const kindSub = exploreRelay.sub([{ kinds: [1], limit: 50 }]);
+        kindSub.on('event', event => this.processExplorerEvent(event));
+        this.subscriptions.set('explorer', kindSub);
+      } catch (error) {
+        console.error("Failed to subscribe to explorer relay:", error);
+      }
+      
+      // Show notification
+      this.showToast(`Switched to relay: ${url}`, 'info');
+    },
+    
+    // Add custom relay
+    addCustomRelay: async function(url) {
+      if (!url.startsWith('wss://')) {
+        url = 'wss://' + url;
+      }
+      
+      try {
+        // Connect to relay
+        const relay = await this.connectRelay(url);
+        
+        // Add to explorer relays
+        this.explorerRelays.set(url, relay);
+        
+        // Update relay selector
+        this.updateRelaySelector();
+        
+        // Set as active relay
+        this.setActiveExplorerRelay(url);
+        
+        // Show notification
+        this.showToast(`Connected to relay: ${url}`, 'success');
+      } catch (error) {
+        this.showToast(`Failed to connect to relay: ${error.message}`, 'error');
+      }
+    },
+    
+    // Initiate zap
+    triggerZap: function() {
+      const popup = document.getElementById('user-popup');
+      const pubkey = popup.dataset.pubkey;
+      if (!pubkey) return;
+      
+      const user = this.users.get(pubkey);
+      if (!user) return;
+      
+      // Show zap interface
+      const zapInterface = document.getElementById('zap-interface');
+      zapInterface.dataset.targetPubkey = pubkey;
+      
+      document.getElementById('zap-target-image').src = user.profile?.picture || '';
+      document.getElementById('zap-target-name').textContent = user.profile?.name || pubkey.substring(0, 8);
+      
+      zapInterface.style.display = 'block';
+    },
+    
+    // Send zap
+    sendZap: async function() {
+      const zapInterface = document.getElementById('zap-interface');
+      const targetPubkey = zapInterface.dataset.targetPubkey;
+      
+      if (!targetPubkey) {
+        this.showToast('No zap target selected', 'error');
+        return;
+      }
+      
+      const user = this.users.get(targetPubkey);
+      if (!user || !user.profile || !user.profile.lud16) {
+        this.showToast('User does not have a lightning address', 'error');
+        return;
+      }
+      
+      const amount = parseInt(document.getElementById('zap-amount').value);
+      if (isNaN(amount) || amount <= 0) {
+        this.showToast('Invalid zap amount', 'error');
+        return;
+      }
+      
+      try {
+        // Check if BitcoinConnect is available
+        if (!window.BitcoinConnect) {
+          this.showToast("BitcoinConnect not loaded, zaps unavailable", "error");
+          return;
+        }
+        
+        // Show sending state
+        const sendButton = document.getElementById('zap-send-button');
+        const originalText = sendButton.textContent;
+        sendButton.innerHTML = '<span class="spinner"></span> Sending...';
+        sendButton.disabled = true;
+        
+        // Initialize Bitcoin Connect
+        const bitcoinConnect = new window.BitcoinConnect.BitcoinConnect({});
+        
+        // Connect wallet
+        await bitcoinConnect.enable();
+        
+        // Simulate payment (in real implementation, this would use actual Lightning)
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Hide zap interface
+        zapInterface.style.display = 'none';
+        
+        // Show success message
+        this.showToast(`Zapped ${user.profile.name || targetPubkey.substring(0, 8)} ${amount} sats!`, 'success');
+        
+        // Update player stats
+        this.player.score += Math.floor(amount / 10);
+        this.updateScoreDisplay();
+        this.publishPlayerStats();
+        
+        // Reset button
+        sendButton.textContent = originalText;
+        sendButton.disabled = false;
+        
+      } catch (error) {
+        console.error('Failed to send zap:', error);
+        this.showToast('Failed to send zap: ' + error.message, 'error');
+        
+        // Reset button
+        const sendButton = document.getElementById('zap-send-button');
+        sendButton.textContent = 'Send Zap';
+        sendButton.disabled = false;
+      }
+    }
+  };
+  
+  // Initialize the game
+  RelayWorld.init();
+})();
+</script>
 </body>
 </html>
