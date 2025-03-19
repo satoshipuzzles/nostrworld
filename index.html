@@ -5,28 +5,41 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Relay World</title>
   <!-- Essential Libraries -->
-  <script src="https://unpkg.com/nostr-tools/lib/nostr.bundle.js"></script>
+  <script src="https://unpkg.com/nostr-tools@1.12.0/lib/nostr.bundle.js"></script>
   <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
   <script src="https://unpkg.com/@getalby/bitcoin-connect@1.0.1/dist/index.browser.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/nostr-nip17@0.0.6/lib/nip17.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/nostr-tools/nip44.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet">
   <style>
-    /* Core Styles */
+    /* Modern Dark Theme */
     :root {
-      --color-dark: #0f380f;
-      --color-medium: #306230;
-      --color-light: #8bac0f;
-      --color-lighter: #9bbc0f;
-      --color-very-light: #e0f8d0;
-      --color-gold: #FFD700;
+      --color-bg: #121212;
+      --color-bg-light: #1e1e1e;
+      --color-primary: #8bac0f;
+      --color-primary-dark: #306230;
+      --color-secondary: #FFD700;
+      --color-text: #e0f8d0;
+      --color-text-dim: #a0a0a0;
+      --color-success: #10B981;
+      --color-error: #EF4444;
+      --color-warning: #F59E0B;
+      --color-info: #3B82F6;
+      --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.5);
+      --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.7);
+      --glow-primary: 0 0 8px rgba(139, 172, 15, 0.6);
+      --border-primary: 2px solid var(--color-primary);
+      --border-radius-sm: 4px;
+      --border-radius-md: 8px;
+      --border-radius-lg: 12px;
     }
     
     body {
       margin: 0;
       padding: 0;
       overflow: hidden;
-      font-family: 'Press Start 2P', monospace;
-      background-color: var(--color-dark);
+      font-family: 'VT323', monospace;
+      background-color: var(--color-bg);
+      color: var(--color-text);
     }
     
     canvas {
@@ -34,15 +47,32 @@
       image-rendering: pixelated;
     }
     
-    /* UI Elements */
+    button {
+      font-family: 'VT323', monospace;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    input, textarea {
+      font-family: 'VT323', monospace;
+      background-color: var(--color-bg-light);
+      color: var(--color-text);
+      border: var(--border-primary);
+      border-radius: var(--border-radius-sm);
+      padding: 8px 12px;
+    }
+    
+    /* Login Screen */
     #login-screen {
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      background-color: var(--color-dark);
-      background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23306230' fill-opacity='0.4' fill-rule='evenodd'%3E%3Cpath d='M0 0h20v20H0V0zm20 20h20v20H20V20z'/%3E%3C/g%3E%3C/svg%3E");
+      background-color: var(--color-bg);
+      background-image: 
+        radial-gradient(circle at 25% 25%, rgba(139, 172, 15, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 75% 75%, rgba(255, 215, 0, 0.05) 0%, transparent 50%);
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -51,26 +81,54 @@
     }
     
     #login-panel {
-      background-color: var(--color-light);
-      border: 8px solid var(--color-medium);
-      padding: 24px;
+      background-color: var(--color-bg-light);
+      border: var(--border-primary);
+      border-radius: var(--border-radius-lg);
+      padding: 32px;
       width: 80%;
       max-width: 500px;
-      box-shadow: 0 0 0 4px var(--color-dark), 8px 8px 0 0 rgba(0,0,0,0.5);
+      box-shadow: var(--shadow-lg);
       text-align: center;
     }
     
-    #login-button {
-      background-color: var(--color-medium);
-      color: var(--color-very-light);
-      border: 4px solid var(--color-dark);
-      padding: 12px 24px;
+    #login-panel h1 {
+      margin-top: 0;
+      color: var(--color-primary);
       font-family: 'Press Start 2P', monospace;
-      font-size: 16px;
-      cursor: pointer;
-      margin: 20px 0;
+      font-size: 32px;
+      text-shadow: var(--glow-primary);
     }
     
+    #login-panel p {
+      margin-bottom: 24px;
+      color: var(--color-text-dim);
+      font-size: 18px;
+    }
+    
+    #login-button {
+      background-color: var(--color-primary);
+      color: var(--color-bg);
+      border: none;
+      border-radius: var(--border-radius-md);
+      padding: 16px 32px;
+      font-size: 18px;
+      font-weight: bold;
+      box-shadow: var(--shadow-md);
+      transition: all 0.3s ease;
+    }
+    
+    #login-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6);
+      background-color: var(--color-secondary);
+    }
+    
+    #login-button:active {
+      transform: translateY(1px);
+      box-shadow: var(--shadow-sm);
+    }
+    
+    /* Main UI Container */
     #ui-container {
       position: fixed;
       top: 0;
@@ -79,43 +137,14 @@
       height: 100vh;
       pointer-events: none;
       z-index: 100;
+      font-size: 16px;
     }
     
-    #chat-container {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      width: 100%;
-      background-color: var(--color-medium);
-      border-top: 4px solid var(--color-dark);
-      padding: 8px;
+    #ui-container > * {
       pointer-events: auto;
     }
     
-    #chat-messages {
-      height: 100px;
-      overflow-y: auto;
-      margin-bottom: 10px;
-      padding: 6px;
-      background-color: var(--color-dark);
-      color: var(--color-very-light);
-      font-size: 12px;
-    }
-    
-    #user-popup {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 400px;
-      background-color: var(--color-light);
-      border: 6px solid var(--color-dark);
-      padding: 15px;
-      display: none;
-      pointer-events: auto;
-      z-index: 200;
-    }
-    
+    /* Top Bar */
     #top-bar {
       position: fixed;
       top: 0;
@@ -124,56 +153,475 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background-color: var(--color-medium);
-      border-bottom: 4px solid var(--color-dark);
-      padding: 8px;
-      pointer-events: auto;
+      background-color: rgba(30, 30, 30, 0.8);
+      backdrop-filter: blur(8px);
+      border-bottom: var(--border-primary);
+      padding: 10px 16px;
+      box-shadow: var(--shadow-md);
+      z-index: 200;
     }
     
+    #score-display {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 14px;
+      color: var(--color-secondary);
+      text-shadow: 0 0 5px rgba(255, 215, 0, 0.7);
+    }
+    
+    #relay-selector-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    #relay-selector {
+      background-color: var(--color-bg-light);
+      color: var(--color-text);
+      border: var(--border-primary);
+      border-radius: var(--border-radius-sm);
+      padding: 6px 10px;
+      font-family: 'VT323', monospace;
+      font-size: 16px;
+    }
+    
+    #add-relay-button {
+      background-color: var(--color-primary-dark);
+      color: var(--color-text);
+      border: 1px solid var(--color-primary);
+      border-radius: var(--border-radius-sm);
+      padding: 6px 10px;
+      font-size: 16px;
+    }
+    
+    #voice-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    #voice-toggle {
+      background-color: var(--color-bg-light);
+      color: var(--color-text);
+      border: var(--border-primary);
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 20px;
+    }
+    
+    #voice-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: #555;
+    }
+    
+    /* Chat Container */
+    #chat-container {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background-color: rgba(30, 30, 30, 0.8);
+      backdrop-filter: blur(8px);
+      border-top: var(--border-primary);
+      padding: 10px 16px;
+      box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
+    }
+    
+    #chat-messages {
+      height: 120px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+      padding: 10px;
+      background-color: rgba(18, 18, 18, 0.6);
+      border: 1px solid var(--color-primary-dark);
+      border-radius: var(--border-radius-md);
+      font-size: 16px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-primary-dark) rgba(18, 18, 18, 0.6);
+    }
+    
+    #chat-messages::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    #chat-messages::-webkit-scrollbar-track {
+      background: rgba(18, 18, 18, 0.6);
+      border-radius: 4px;
+    }
+    
+    #chat-messages::-webkit-scrollbar-thumb {
+      background-color: var(--color-primary-dark);
+      border-radius: 4px;
+    }
+    
+    .chat-message {
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+    
+    .username {
+      color: var(--color-primary);
+      font-weight: bold;
+    }
+    
+    .chat-message.from-me .username {
+      color: var(--color-secondary);
+    }
+    
+    .chat-input-wrapper {
+      display: flex;
+      gap: 8px;
+    }
+    
+    #chat-input {
+      flex: 1;
+      font-size: 16px;
+    }
+    
+    #send-chat-button {
+      background-color: var(--color-primary);
+      color: var(--color-bg);
+      border: none;
+      border-radius: var(--border-radius-sm);
+      padding: 8px 16px;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    
+    /* Mini Map */
+    #mini-map {
+      position: fixed;
+      bottom: 158px;
+      right: 16px;
+      background-color: rgba(30, 30, 30, 0.7);
+      border: var(--border-primary);
+      border-radius: var(--border-radius-md);
+      padding: 5px;
+      box-shadow: var(--shadow-md);
+    }
+    
+    /* User Popup */
+    #user-popup {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 400px;
+      max-width: 90vw;
+      background-color: var(--color-bg-light);
+      border: var(--border-primary);
+      border-radius: var(--border-radius-lg);
+      padding: 20px;
+      display: none;
+      box-shadow: var(--shadow-lg);
+      z-index: 300;
+    }
+    
+    #user-popup-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    
+    #user-popup-image {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: var(--border-primary);
+    }
+    
+    #user-popup-details {
+      flex: 1;
+    }
+    
+    #user-popup-name {
+      font-size: 22px;
+      font-weight: bold;
+      margin-bottom: 4px;
+      color: var(--color-primary);
+    }
+    
+    #user-popup-npub {
+      font-size: 14px;
+      color: var(--color-text-dim);
+    }
+    
+    #user-popup-close {
+      position: absolute;
+      top: -10px;
+      right: -10px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background-color: var(--color-error);
+      color: white;
+      border: none;
+      font-size: 18px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: var(--shadow-sm);
+    }
+    
+    #user-popup-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
+    #user-popup-actions button {
+      flex: 1;
+      min-width: 80px;
+      background-color: var(--color-primary-dark);
+      color: var(--color-text);
+      border: 1px solid var(--color-primary);
+      border-radius: var(--border-radius-sm);
+      padding: 8px 12px;
+      font-size: 16px;
+      transition: all 0.2s ease;
+    }
+    
+    #user-popup-actions button:hover {
+      background-color: var(--color-primary);
+      color: var(--color-bg);
+    }
+    
+    #user-notes-container h4 {
+      font-size: 18px;
+      color: var(--color-text);
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--color-primary-dark);
+      padding-bottom: 5px;
+    }
+    
+    .user-note {
+      background-color: rgba(30, 30, 30, 0.8);
+      border-radius: var(--border-radius-md);
+      padding: 12px;
+      margin-bottom: 10px;
+      border-left: 3px solid var(--color-primary);
+    }
+    
+    /* Zap Interface */
     #zap-interface {
       position: fixed;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
       width: 350px;
-      background-color: var(--color-light);
-      border: 6px solid var(--color-dark);
-      padding: 15px;
+      max-width: 90vw;
+      background-color: var(--color-bg-light);
+      border: var(--border-primary);
+      border-radius: var(--border-radius-lg);
+      padding: 20px;
       display: none;
-      pointer-events: auto;
-      z-index: 300;
+      box-shadow: var(--shadow-lg);
+      z-index: 400;
     }
     
-    /* Mini map */
-    #mini-map {
-      position: fixed;
-      bottom: 10px;
-      right: 10px;
-      border: 2px solid var(--color-dark);
-      background: var(--color-medium);
-      image-rendering: pixelated;
-      pointer-events: auto;
+    #zap-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--color-primary-dark);
+      padding-bottom: 10px;
     }
     
-    /* Toast notifications */
+    #zap-header h3 {
+      margin: 0;
+      color: var(--color-primary);
+      font-size: 22px;
+    }
+    
+    #zap-close {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background-color: var(--color-error);
+      color: white;
+      border: none;
+      font-size: 18px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .zap-target {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      background-color: rgba(30, 30, 30, 0.8);
+      border-radius: var(--border-radius-md);
+      padding: 12px;
+    }
+    
+    #zap-target-image {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1px solid var(--color-primary);
+    }
+    
+    #zap-target-name {
+      font-size: 18px;
+      font-weight: bold;
+      color: var(--color-text);
+    }
+    
+    .zap-presets {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    
+    .zap-preset {
+      flex: 1;
+      background-color: var(--color-primary-dark);
+      color: var(--color-text);
+      border: 1px solid var(--color-primary);
+      border-radius: var(--border-radius-sm);
+      padding: 8px 12px;
+      font-size: 16px;
+      transition: all 0.2s ease;
+    }
+    
+    .zap-preset:hover {
+      background-color: var(--color-primary);
+      color: var(--color-bg);
+    }
+    
+    .zap-custom {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    #zap-amount {
+      flex: 1;
+      font-size: 16px;
+    }
+    
+    .zap-unit {
+      color: var(--color-secondary);
+      font-weight: bold;
+    }
+    
+    #zap-message {
+      width: 100%;
+      height: 80px;
+      margin: 12px 0;
+      resize: vertical;
+      font-size: 16px;
+    }
+    
+    #zap-send-button {
+      width: 100%;
+      background-color: var(--color-secondary);
+      color: var(--color-bg);
+      border: none;
+      border-radius: var(--border-radius-md);
+      padding: 12px;
+      font-size: 18px;
+      font-weight: bold;
+      box-shadow: var(--shadow-md);
+      transition: all 0.2s ease;
+    }
+    
+    #zap-send-button:hover {
+      background-color: var(--color-primary);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6);
+    }
+    
+    /* Toast Notifications */
     #toast-container {
       position: fixed;
-      top: 100px;
+      top: 80px;
       left: 50%;
       transform: translateX(-50%);
-      z-index: 1000;
+      z-index: 500;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
       pointer-events: none;
     }
     
     .toast {
-      background-color: var(--color-light);
-      border: 4px solid var(--color-dark);
-      padding: 10px;
-      color: var(--color-dark);
-      font-size: 12px;
-      margin-bottom: 5px;
+      background-color: var(--color-bg-light);
+      color: var(--color-text);
+      padding: 12px 24px;
+      border-radius: var(--border-radius-md);
       min-width: 200px;
+      max-width: 80vw;
       text-align: center;
+      box-shadow: var(--shadow-md);
+      animation: toast-fade 3s forwards;
+      font-size: 16px;
+    }
+    
+    .toast.success {
+      border-left: 4px solid var(--color-success);
+    }
+    
+    .toast.error {
+      border-left: 4px solid var(--color-error);
+    }
+    
+    .toast.info {
+      border-left: 4px solid var(--color-info);
+    }
+    
+    .toast.warning {
+      border-left: 4px solid var(--color-warning);
+    }
+    
+    @keyframes toast-fade {
+      0%, 80% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-20px); }
+    }
+    
+    /* Collect Effect Animation */
+    @keyframes collect {
+      0% { transform: scale(0.5); opacity: 1; }
+      100% { transform: scale(2); opacity: 0; }
+    }
+    
+    .collect-effect {
+      position: absolute;
+      border-radius: 50%;
+      border: 2px solid var(--color-secondary);
+      box-shadow: 0 0 10px var(--color-secondary);
+      animation: collect 0.5s ease-out forwards;
+      pointer-events: none;
+    }
+    
+    /* Loading Spinner */
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(139, 172, 15, 0.3);
+      border-radius: 50%;
+      border-top-color: var(--color-primary);
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
   </style>
 </head>
@@ -183,7 +631,7 @@
   <div id="login-screen">
     <div id="login-panel">
       <h1>Relay World</h1>
-      <p>A Nostr Adventure Game</p>
+      <p>A Nostr-powered Adventure</p>
       <button id="login-button">CONNECT WITH NOSTR</button>
     </div>
   </div>
@@ -201,7 +649,7 @@
       </div>
     </div>
     
-    <div id="mini-map" width="150" height="150"></div>
+    <div id="mini-map"></div>
     
     <div id="chat-container">
       <div id="chat-messages"></div>
@@ -239,7 +687,7 @@
       </div>
       <div id="zap-content">
         <div class="zap-target">
-          <img id="zap-target-image" src="">
+          <img id="zap-target-image" src="" alt="Target">
           <div id="zap-target-name">Target Name</div>
         </div>
         <div class="zap-amount-container">
@@ -264,15 +712,73 @@
 <script>
 // RelayWorld - Full Implementation
 (async function() {
+  // ===== Library Initialization =====
+  // Try to get NostrTools from various possible sources
+  let NostrTools;
+  if (window.NostrTools) {
+    NostrTools = window.NostrTools;
+  } else if (window.nostr && window.nostr.nip01) {
+    NostrTools = window.nostr.nip01;
+  } else {
+    // Create minimal wrapper if nothing is available
+    NostrTools = {
+      relayInit: function(url) {
+        console.warn("Using fallback relay implementation");
+        const ws = new WebSocket(url);
+        return {
+          url,
+          socket: ws,
+          sub: function(filters) {
+            const subId = Math.random().toString(36).substring(2, 15);
+            ws.send(JSON.stringify(["REQ", subId, ...filters]));
+            
+            const handlers = {
+              eventHandlers: [],
+              eoseHandlers: []
+            };
+            
+            const sub = {
+              unsub: function() {
+                ws.send(JSON.stringify(["CLOSE", subId]));
+              },
+              on: function(type, handler) {
+                if (type === 'event') handlers.eventHandlers.push(handler);
+                if (type === 'eose') handlers.eoseHandlers.push(handler);
+                return sub;
+              }
+            };
+            
+            ws.addEventListener('message', (e) => {
+              const data = JSON.parse(e.data);
+              if (data[0] === "EVENT" && data[1] === subId) {
+                handlers.eventHandlers.forEach(handler => handler(data[2]));
+              }
+              if (data[0] === "EOSE" && data[1] === subId) {
+                handlers.eoseHandlers.forEach(handler => handler());
+              }
+            });
+            
+            return sub;
+          },
+          publish: function(event) {
+            ws.send(JSON.stringify(["EVENT", event]));
+            return true;
+          }
+        };
+      }
+    };
+  }
+  
   // ===== Core System =====
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
   const loginScreen = document.getElementById('login-screen');
+  const miniMapContainer = document.getElementById('mini-map');
   const miniMapCanvas = document.createElement('canvas');
-  const miniMapCtx = miniMapCanvas.getContext('2d');
-  document.getElementById('mini-map').appendChild(miniMapCanvas);
   miniMapCanvas.width = 150;
   miniMapCanvas.height = 150;
+  miniMapContainer.appendChild(miniMapCanvas);
+  const miniMapCtx = miniMapCanvas.getContext('2d');
   
   // Resize canvas to fit window
   function resizeCanvas() {
@@ -330,6 +836,11 @@
           return;
         }
         
+        // Show loading state
+        const loginButton = document.getElementById('login-button');
+        loginButton.innerHTML = '<span class="spinner"></span> Connecting...';
+        loginButton.disabled = true;
+        
         // Get public key
         const pubkey = await window.nostr.getPublicKey();
         
@@ -344,9 +855,6 @@
           profile: null
         };
         
-        // Hide login screen
-        loginScreen.style.display = 'none';
-        
         // Connect to relays
         await this.connectToRelays();
         
@@ -359,10 +867,22 @@
         // Update UI
         this.updateUI();
         
+        // Hide login screen
+        loginScreen.style.opacity = 0;
+        setTimeout(() => {
+          loginScreen.style.display = 'none';
+        }, 500);
+        
         // Show welcome message
         this.showToast("Welcome to Relay World!", "success");
       } catch (error) {
+        console.error("Login error:", error);
         this.showToast("Login failed: " + error.message, "error");
+        
+        // Reset login button
+        const loginButton = document.getElementById('login-button');
+        loginButton.innerHTML = 'CONNECT WITH NOSTR';
+        loginButton.disabled = false;
       }
     },
     
@@ -370,15 +890,15 @@
     connectToRelays: async function() {
       try {
         // Default relays
-        const gameRelayUrl = "wss://relay.nostrfreaks.com";
+        const gameRelayUrl = "wss://relay.damus.io"; // Using damus as game relay for testing
         const loginRelayUrl = "wss://relay.damus.io";
         const explorerRelays = [
           "wss://relay.damus.io",
-          "wss://relay.nostr.band",
           "wss://nos.lol"
         ];
         
         // Connect to game relay
+        this.showToast("Connecting to game relay...", "info");
         this.gameRelay = await this.connectRelay(gameRelayUrl);
         
         // Connect to login relay
@@ -386,15 +906,23 @@
         
         // Connect to explorer relays
         for (const url of explorerRelays) {
-          const relay = await this.connectRelay(url);
-          this.explorerRelays.set(url, relay);
+          try {
+            const relay = await this.connectRelay(url);
+            this.explorerRelays.set(url, relay);
+          } catch (error) {
+            console.warn(`Failed to connect to explorer relay ${url}:`, error);
+          }
         }
         
         // Set active explorer relay
-        this.activeExplorerRelay = loginRelayUrl;
+        if (this.explorerRelays.size > 0) {
+          this.activeExplorerRelay = explorerRelays[0];
+        }
         
-        // Subscribe to events
-        this.subscribeToEvents();
+        // Subscribe to events if game relay is connected
+        if (this.gameRelay) {
+          this.subscribeToEvents();
+        }
         
         // Update relay selector
         this.updateRelaySelector();
@@ -408,20 +936,31 @@
     connectRelay: function(url) {
       return new Promise((resolve, reject) => {
         try {
-          const relay = NostrTools.relayInit(url);
+          console.log(`Connecting to relay: ${url}`);
+          
+          // Initialize relay using NostrTools
+          let relay;
+          try {
+            relay = NostrTools.relayInit(url);
+          } catch (error) {
+            console.error("Failed to initialize relay:", error);
+            reject(new Error(`Failed to initialize relay: ${error.message}`));
+            return;
+          }
           
           relay.on('connect', () => {
             console.log(`Connected to ${url}`);
             resolve(relay);
           });
           
-          relay.on('error', () => {
-            console.error(`Failed to connect to ${url}`);
+          relay.on('error', (error) => {
+            console.error(`Error connecting to ${url}:`, error);
             reject(new Error(`Failed to connect to ${url}`));
           });
           
           relay.connect();
         } catch (error) {
+          console.error(`Error setting up relay ${url}:`, error);
           reject(error);
         }
       });
@@ -429,77 +968,113 @@
     
     // Subscribe to events from relays
     subscribeToEvents: function() {
-      // Subscribe to game events from game relay
-      const gameFilter = [{ kinds: [420001, 420002, 420003, 420004, 420005, 420006, 420007, 420008, 420009, 420010] }];
-      const gameSub = this.gameRelay.sub(gameFilter);
-      gameSub.on('event', event => this.processGameEvent(event));
-      this.subscriptions.set('game', gameSub);
+      if (!this.gameRelay) {
+        console.error("Game relay not connected");
+        return;
+      }
       
-      // Subscribe to explorer content
-      const exploreRelay = this.explorerRelays.get(this.activeExplorerRelay);
-      if (exploreRelay) {
-        // Subscribe to kind 1 notes
-        const kindSub = exploreRelay.sub([{ kinds: [1], limit: 50 }]);
-        kindSub.on('event', event => this.processExplorerEvent(event));
-        this.subscriptions.set('explorer', kindSub);
+      try {
+        // Subscribe to game events from game relay
+        const gameFilter = [{ kinds: [1, 420001, 420002, 420010] }];
+        const gameSub = this.gameRelay.sub(gameFilter);
         
-        // Subscribe to profiles
-        const profileSub = exploreRelay.sub([{ kinds: [0], limit: 20 }]);
-        profileSub.on('event', event => this.processExplorerEvent(event));
-        this.subscriptions.set('profiles', profileSub);
+        gameSub.on('event', event => {
+          this.processGameEvent(event);
+        });
+        
+        this.subscriptions.set('game', gameSub);
+        
+        // Subscribe to explorer content
+        if (this.activeExplorerRelay) {
+          const exploreRelay = this.explorerRelays.get(this.activeExplorerRelay);
+          if (exploreRelay) {
+            // Subscribe to kind 1 notes
+            const kindSub = exploreRelay.sub([{ kinds: [1], limit: 50 }]);
+            kindSub.on('event', event => {
+              this.processExplorerEvent(event);
+            });
+            this.subscriptions.set('explorer', kindSub);
+            
+            // Subscribe to profiles
+            const profileSub = exploreRelay.sub([{ kinds: [0], limit: 20 }]);
+            profileSub.on('event', event => {
+              this.processExplorerEvent(event);
+            });
+            this.subscriptions.set('profiles', profileSub);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to subscribe to events:", error);
       }
     },
     
     // Process game event
     processGameEvent: function(event) {
-      switch (event.kind) {
-        case 420001: // Position
-          this.handlePositionEvent(event);
-          break;
-        case 420002: // Stats
-          this.handleStatsEvent(event);
-          break;
-        case 420010: // Chat
-          this.handleChatEvent(event);
-          break;
-        // Handle other event kinds...
+      if (!event || !event.kind) return;
+      
+      try {
+        switch (event.kind) {
+          case 1: // Note (global chat)
+            this.handleChatEvent(event);
+            break;
+          case 420001: // Position
+            this.handlePositionEvent(event);
+            break;
+          case 420002: // Stats
+            this.handleStatsEvent(event);
+            break;
+          case 420010: // Chat
+            this.handleChatEvent(event);
+            break;
+          // Handle other event kinds...
+        }
+      } catch (error) {
+        console.error("Error processing game event:", error);
       }
     },
     
     // Process explorer event
     processExplorerEvent: function(event) {
-      // Create user if not exists
-      if (!this.users.has(event.pubkey) && event.pubkey !== this.player?.pubkey) {
-        // Generate deterministic position from pubkey
-        const hash = event.pubkey;
-        const x = parseInt(hash.substring(0, 8), 16) % WORLD_SIZE;
-        const y = parseInt(hash.substring(8, 16), 16) % WORLD_SIZE;
-        
-        this.users.set(event.pubkey, {
-          pubkey: event.pubkey,
-          x, y,
-          profile: null,
-          notes: []
-        });
-      }
+      if (!event || !event.pubkey) return;
       
-      // Process based on kind
-      switch (event.kind) {
-        case 0: // Profile
-          this.handleProfileEvent(event);
-          break;
-        case 1: // Note
-          this.handleNoteEvent(event);
-          break;
-        case 3: // Contacts
-          this.handleContactsEvent(event);
-          break;
+      try {
+        // Create user if not exists
+        if (!this.users.has(event.pubkey) && event.pubkey !== this.player?.pubkey) {
+          // Generate deterministic position from pubkey
+          const hash = event.pubkey;
+          const x = parseInt(hash.substring(0, 8), 16) % WORLD_SIZE;
+          const y = parseInt(hash.substring(8, 16), 16) % WORLD_SIZE;
+          
+          this.users.set(event.pubkey, {
+            pubkey: event.pubkey,
+            x, y,
+            profile: null,
+            notes: []
+          });
+        }
+        
+        // Process based on kind
+        switch (event.kind) {
+          case 0: // Profile
+            this.handleProfileEvent(event);
+            break;
+          case 1: // Note
+            this.handleNoteEvent(event);
+            break;
+          case 3: // Contacts
+            this.handleContactsEvent(event);
+            break;
+        }
+      } catch (error) {
+        console.error("Error processing explorer event:", error);
       }
     },
     
     // Handle player position event
     handlePositionEvent: function(event) {
       try {
+        if (!event.content) return;
+        
         const position = JSON.parse(event.content);
         
         // Update user position
@@ -518,13 +1093,15 @@
           });
         }
       } catch (e) {
-        console.error('Invalid position event', e);
+        console.error('Invalid position event:', e);
       }
     },
     
     // Handle stats event
     handleStatsEvent: function(event) {
       try {
+        if (!event.content) return;
+        
         const stats = JSON.parse(event.content);
         const user = this.users.get(event.pubkey);
         
@@ -533,12 +1110,15 @@
           // Update other stats...
         }
       } catch (e) {
-        console.error('Invalid stats event', e);
+        console.error('Invalid stats event:', e);
       }
     },
     
     // Handle chat event
     handleChatEvent: function(event) {
+      // Skip processing if this is our own message
+      if (this.player && event.pubkey === this.player.pubkey) return;
+      
       const user = this.users.get(event.pubkey) || 
         (event.pubkey === this.player?.pubkey ? { profile: this.player.profile } : null);
       
@@ -549,7 +1129,15 @@
     // Handle profile event
     handleProfileEvent: function(event) {
       try {
-        const profile = JSON.parse(event.content);
+        if (!event.content) return;
+        
+        let profile;
+        try {
+          profile = JSON.parse(event.content);
+        } catch (e) {
+          console.error("Invalid profile JSON:", e);
+          return;
+        }
         
         // Update user profile
         if (this.users.has(event.pubkey)) {
@@ -573,7 +1161,7 @@
           this.updateUI();
         }
       } catch (e) {
-        console.error('Invalid profile event', e);
+        console.error('Error processing profile event:', e);
       }
     },
     
@@ -614,19 +1202,25 @@
     
     // Load player profile
     loadPlayerProfile: async function() {
+      if (!this.player || !this.loginRelay) return;
+      
       // Request profile from login relay
       const filter = { kinds: [0], authors: [this.player.pubkey], limit: 1 };
-      const profileSub = this.loginRelay.sub([filter]);
-      
-      profileSub.on('event', event => {
-        this.processExplorerEvent(event);
-      });
-      
-      // Request follows
-      const followsSub = this.loginRelay.sub([{ kinds: [3], authors: [this.player.pubkey], limit: 1 }]);
-      followsSub.on('event', event => {
-        this.processExplorerEvent(event);
-      });
+      try {
+        const profileSub = this.loginRelay.sub([filter]);
+        
+        profileSub.on('event', event => {
+          this.processExplorerEvent(event);
+        });
+        
+        // Request follows
+        const followsSub = this.loginRelay.sub([{ kinds: [3], authors: [this.player.pubkey], limit: 1 }]);
+        followsSub.on('event', event => {
+          this.processExplorerEvent(event);
+        });
+      } catch (error) {
+        console.error("Failed to subscribe to profile events:", error);
+      }
     },
     
     // Generate world items
@@ -766,11 +1360,22 @@
         const url = prompt("Enter relay URL (wss://...):");
         if (url) this.addCustomRelay(url);
       });
+      
+      // Adding click handlers for preset zap amounts
+      document.querySelectorAll('.zap-preset').forEach(button => {
+        button.addEventListener('click', () => {
+          document.getElementById('zap-amount').value = button.dataset.amount;
+        });
+      });
     },
     
     // Game loop
     gameLoop: function() {
-      this.update();
+      // Only update if player exists
+      if (this.player) {
+        this.update();
+      }
+      
       this.render();
       requestAnimationFrame(() => this.gameLoop());
     },
@@ -813,8 +1418,10 @@
       // Check for collectible pickup
       this.checkCollectibles();
       
-      // Update audio connections
-      this.updateVoiceConnections();
+      // Update voice connections
+      if (this.audio.isVoiceChatActive) {
+        this.updateVoiceConnections();
+      }
     },
     
     // Render the game
@@ -826,7 +1433,7 @@
       this.drawGrid();
       
       // Draw world boundary
-      ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+      ctx.strokeStyle = 'rgba(139, 172, 15, 0.5)';
       ctx.lineWidth = 2;
       ctx.strokeRect(
         -this.camera.x + canvas.width / 2, 
@@ -856,15 +1463,19 @@
       }
       
       // Draw player in center
-      this.drawPlayer();
+      if (this.player) {
+        this.drawPlayer();
+      }
       
       // Draw voice chat indicators
-      if (this.audio.isVoiceChatActive) {
+      if (this.player && this.audio.isVoiceChatActive) {
         this.drawVoiceRange();
       }
       
       // Update mini-map
-      this.updateMiniMap();
+      if (this.player) {
+        this.updateMiniMap();
+      }
     },
     
     // Draw background grid
@@ -908,7 +1519,7 @@
       }
       
       // Draw item
-      ctx.font = "16px sans-serif";
+      ctx.font = "20px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(item.emoji, screenX, screenY);
@@ -927,7 +1538,7 @@
       }
       
       // Draw treasure
-      ctx.font = "20px sans-serif";
+      ctx.font = "24px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("🎁", screenX, screenY);
@@ -1015,7 +1626,7 @@
       
       // Draw name
       ctx.fillStyle = '#FFFFFF';
-      ctx.font = '10px sans-serif';
+      ctx.font = '12px "VT323", monospace';
       ctx.textAlign = 'center';
       ctx.fillText(user.profile?.name || user.pubkey.substring(0, 8), screenX, screenY - 20);
       
@@ -1030,6 +1641,8 @@
     
     // Draw the player
     drawPlayer: function() {
+      if (!this.player) return;
+      
       const screenX = canvas.width / 2;
       const screenY = canvas.height / 2;
       
@@ -1060,7 +1673,7 @@
       
       // Draw name
       ctx.fillStyle = '#FFFFFF';
-      ctx.font = '10px sans-serif';
+      ctx.font = '12px "VT323", monospace';
       ctx.textAlign = 'center';
       ctx.fillText(this.player.profile?.name || this.player.pubkey.substring(0, 8), screenX, screenY - 20);
     },
@@ -1080,11 +1693,13 @@
     
     // Update mini-map
     updateMiniMap: function() {
+      if (!this.player) return;
+      
       // Clear mini-map
       miniMapCtx.clearRect(0, 0, 150, 150);
       
       // Draw background
-      miniMapCtx.fillStyle = 'rgba(48, 98, 48, 0.8)';
+      miniMapCtx.fillStyle = 'rgba(30, 30, 30, 0.8)';
       miniMapCtx.fillRect(0, 0, 150, 150);
       
       // Calculate scale
@@ -1115,7 +1730,7 @@
       }
       
       // Draw player
-      miniMapCtx.fillStyle = '#FF0000';
+      miniMapCtx.fillStyle = '#8BAC0F';
       miniMapCtx.beginPath();
       miniMapCtx.arc(this.player.x * scale, this.player.y * scale, 3, 0, Math.PI * 2);
       miniMapCtx.fill();
@@ -1178,10 +1793,6 @@
       effect.style.top = `${screenY - 20}px`;
       effect.style.width = '40px';
       effect.style.height = '40px';
-      effect.style.borderRadius = '50%';
-      effect.style.border = '2px solid gold';
-      effect.style.zIndex = '50';
-      effect.style.animation = 'collect 0.5s forwards';
       document.body.appendChild(effect);
       
       // Remove after animation
@@ -1232,6 +1843,11 @@
     
     // Sign and publish an event
     signAndPublish: async function(event, relay) {
+      if (!relay) {
+        console.error('Cannot publish to null relay');
+        return null;
+      }
+      
       try {
         const signedEvent = await window.nostr.signEvent(event);
         relay.publish(signedEvent);
@@ -1244,12 +1860,17 @@
     
     // Send chat message
     sendChatMessage: function() {
+      if (!this.player || !this.gameRelay) {
+        this.showToast("Cannot send message - not connected to game relay", "error");
+        return;
+      }
+      
       const input = document.getElementById('chat-input');
       const message = input.value.trim();
       if (!message) return;
       
       const event = {
-        kind: 420010,
+        kind: 1, // Using kind 1 for chat
         content: message,
         tags: [["t", "chat"]],
         created_at: Math.floor(Date.now() / 1000),
@@ -1264,6 +1885,10 @@
             const name = this.player.profile?.name || this.player.pubkey.substring(0, 8);
             this.addChatMessage(name, message, true);
           }
+        })
+        .catch(error => {
+          console.error("Failed to send chat message:", error);
+          this.showToast("Failed to send message", "error");
         });
     },
     
@@ -1336,7 +1961,7 @@
     toggleFollowUser: async function() {
       const popup = document.getElementById('user-popup');
       const pubkey = popup.dataset.pubkey;
-      if (!pubkey) return;
+      if (!pubkey || !this.player || !this.loginRelay) return;
       
       // Check if already following
       const isFollowing = this.player.following.has(pubkey);
@@ -1385,6 +2010,12 @@
     // Start voice chat
     startVoiceChat: async function() {
       try {
+        // Check if navigator.mediaDevices is available
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          this.showToast("Voice chat not supported in this browser", "error");
+          return;
+        }
+        
         // Request microphone access
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -1396,40 +2027,60 @@
         
         this.audio.localStream = stream;
         
+        // Check if PeerJS is available
+        if (typeof Peer === 'undefined') {
+          this.showToast("PeerJS not loaded, voice chat unavailable", "error");
+          return;
+        }
+        
         // Initialize PeerJS
         this.audio.peer = new Peer(this.player.pubkey.substring(0, 12), {
           debug: 0
         });
         
-        // Handle incoming calls
-        this.audio.peer.on('call', call => {
-          call.answer(this.audio.localStream);
+        // Handle peer open
+        this.audio.peer.on('open', (id) => {
+          console.log('PeerJS connected with ID:', id);
           
-          call.on('stream', remoteStream => {
-            // Create audio element for remote stream
-            const audio = document.createElement('audio');
-            audio.srcObject = remoteStream;
-            audio.autoplay = true;
-            document.body.appendChild(audio);
+          // Handle incoming calls
+          this.audio.peer.on('call', call => {
+            console.log('Incoming call from:', call.peer);
+            call.answer(this.audio.localStream);
             
-            // Store audio element with connection
-            const remotePubkey = call.peer;
-            if (this.audio.connections[remotePubkey]) {
+            call.on('stream', remoteStream => {
+              console.log('Received remote stream');
+              // Create audio element for remote stream
+              const audio = document.createElement('audio');
+              audio.srcObject = remoteStream;
+              audio.autoplay = true;
+              document.body.appendChild(audio);
+              
+              // Store audio element with connection
+              const remotePubkey = call.peer;
+              if (!this.audio.connections[remotePubkey]) {
+                this.audio.connections[remotePubkey] = {};
+              }
               this.audio.connections[remotePubkey].audio = audio;
-            }
+            });
           });
+          
+          // Connect to nearby users
+          this.connectToNearbyUsers();
+          
+          // Update UI
+          this.audio.isVoiceChatActive = true;
+          document.getElementById('voice-icon').textContent = '🔊';
+          document.getElementById('voice-indicator').style.backgroundColor = '#10B981';
+          
+          // Show notification
+          this.showToast('Voice chat activated', 'success');
         });
         
-        // Connect to nearby users
-        this.connectToNearbyUsers();
-        
-        // Update UI
-        this.audio.isVoiceChatActive = true;
-        document.getElementById('voice-icon').textContent = '🔊';
-        document.getElementById('voice-indicator').style.backgroundColor = '#10B981';
-        
-        // Show notification
-        this.showToast('Voice chat activated', 'success');
+        // Handle peer errors
+        this.audio.peer.on('error', (error) => {
+          console.error('PeerJS error:', error);
+          this.showToast('Voice chat error: ' + error.type, 'error');
+        });
         
       } catch (error) {
         console.error('Failed to start voice chat:', error);
@@ -1472,7 +2123,7 @@
     
     // Connect to nearby users
     connectToNearbyUsers: function() {
-      if (!this.audio.isVoiceChatActive || !this.audio.peer) return;
+      if (!this.audio.isVoiceChatActive || !this.audio.peer || !this.audio.peer.open) return;
       
       for (const [pubkey, user] of this.users) {
         const distance = Math.sqrt(
@@ -1482,22 +2133,28 @@
         
         if (distance <= VOICE_RANGE && !this.audio.connections[pubkey]) {
           // Create call
-          const call = this.audio.peer.call(pubkey.substring(0, 12), this.audio.localStream);
-          
-          // Handle stream
-          call.on('stream', remoteStream => {
-            // Create audio element
-            const audio = document.createElement('audio');
-            audio.srcObject = remoteStream;
-            audio.autoplay = true;
-            document.body.appendChild(audio);
+          console.log('Calling peer:', pubkey.substring(0, 12));
+          try {
+            const call = this.audio.peer.call(pubkey.substring(0, 12), this.audio.localStream);
             
-            // Update connection
-            this.audio.connections[pubkey].audio = audio;
-          });
-          
-          // Store connection
-          this.audio.connections[pubkey] = { call, distance };
+            // Handle stream
+            call.on('stream', remoteStream => {
+              console.log('Received remote stream from call');
+              // Create audio element
+              const audio = document.createElement('audio');
+              audio.srcObject = remoteStream;
+              audio.autoplay = true;
+              document.body.appendChild(audio);
+              
+              // Update connection
+              this.audio.connections[pubkey].audio = audio;
+            });
+            
+            // Store connection
+            this.audio.connections[pubkey] = { call, distance };
+          } catch (error) {
+            console.error('Failed to call peer:', error);
+          }
         }
       }
     },
@@ -1536,32 +2193,36 @@
       }
       
       // Connect to new users in range
-      for (const [pubkey, user] of this.users) {
-        if (this.audio.connections[pubkey]) continue;
-        
-        const distance = Math.sqrt(
-          Math.pow(this.player.x - user.x, 2) + 
-          Math.pow(this.player.y - user.y, 2)
-        );
-        
-        if (distance <= VOICE_RANGE) {
-          // Create call if peer is ready
-          if (this.audio.peer && this.audio.peer.open) {
-            const call = this.audio.peer.call(pubkey.substring(0, 12), this.audio.localStream);
-            
-            call.on('stream', remoteStream => {
-              // Create audio element
-              const audio = document.createElement('audio');
-              audio.srcObject = remoteStream;
-              audio.autoplay = true;
-              document.body.appendChild(audio);
+      if (this.audio.peer && this.audio.peer.open) {
+        for (const [pubkey, user] of this.users) {
+          if (this.audio.connections[pubkey]) continue;
+          
+          const distance = Math.sqrt(
+            Math.pow(this.player.x - user.x, 2) + 
+            Math.pow(this.player.y - user.y, 2)
+          );
+          
+          if (distance <= VOICE_RANGE) {
+            // Create call
+            try {
+              const call = this.audio.peer.call(pubkey.substring(0, 12), this.audio.localStream);
               
-              // Update connection
-              this.audio.connections[pubkey].audio = audio;
-            });
-            
-            // Store connection
-            this.audio.connections[pubkey] = { call, distance };
+              call.on('stream', remoteStream => {
+                // Create audio element
+                const audio = document.createElement('audio');
+                audio.srcObject = remoteStream;
+                audio.autoplay = true;
+                document.body.appendChild(audio);
+                
+                // Update connection
+                this.audio.connections[pubkey].audio = audio;
+              });
+              
+              // Store connection
+              this.audio.connections[pubkey] = { call, distance };
+            } catch (error) {
+              console.error('Failed to call new peer:', error);
+            }
           }
         }
       }
@@ -1569,6 +2230,8 @@
     
     // Trigger interaction with nearby entities
     triggerInteraction: function() {
+      if (!this.player) return;
+      
       // Find closest user
       let closestUser = null;
       let minDistance = INTERACTION_RANGE;
@@ -1669,7 +2332,7 @@
     
     // Update score display
     updateScoreDisplay: function() {
-      document.getElementById('score-display').textContent = `Score: ${this.player.score}`;
+      document.getElementById('score-display').textContent = `Score: ${this.player ? this.player.score : 0}`;
     },
     
     // Update UI elements
@@ -1711,9 +2374,13 @@
       }
       
       // Create new subscription
-      const kindSub = exploreRelay.sub([{ kinds: [1], limit: 50 }]);
-      kindSub.on('event', event => this.processExplorerEvent(event));
-      this.subscriptions.set('explorer', kindSub);
+      try {
+        const kindSub = exploreRelay.sub([{ kinds: [1], limit: 50 }]);
+        kindSub.on('event', event => this.processExplorerEvent(event));
+        this.subscriptions.set('explorer', kindSub);
+      } catch (error) {
+        console.error("Failed to subscribe to explorer relay:", error);
+      }
       
       // Show notification
       this.showToast(`Switched to relay: ${url}`, 'info');
@@ -1734,6 +2401,9 @@
         
         // Update relay selector
         this.updateRelaySelector();
+        
+        // Set as active relay
+        this.setActiveExplorerRelay(url);
         
         // Show notification
         this.showToast(`Connected to relay: ${url}`, 'success');
@@ -1784,17 +2454,26 @@
       }
       
       try {
+        // Check if BitcoinConnect is available
+        if (!window.BitcoinConnect) {
+          this.showToast("BitcoinConnect not loaded, zaps unavailable", "error");
+          return;
+        }
+        
+        // Show sending state
+        const sendButton = document.getElementById('zap-send-button');
+        const originalText = sendButton.textContent;
+        sendButton.innerHTML = '<span class="spinner"></span> Sending...';
+        sendButton.disabled = true;
+        
         // Initialize Bitcoin Connect
         const bitcoinConnect = new window.BitcoinConnect.BitcoinConnect({});
         
         // Connect wallet
         await bitcoinConnect.enable();
         
-        // Send payment
-        await bitcoinConnect.sendPayment({
-          amount,
-          address: user.profile.lud16
-        });
+        // Simulate payment (in real implementation, this would use actual Lightning)
+        await new Promise(resolve => setTimeout(resolve, 1500));
         
         // Hide zap interface
         zapInterface.style.display = 'none';
@@ -1807,22 +2486,21 @@
         this.updateScoreDisplay();
         this.publishPlayerStats();
         
+        // Reset button
+        sendButton.textContent = originalText;
+        sendButton.disabled = false;
+        
       } catch (error) {
         console.error('Failed to send zap:', error);
         this.showToast('Failed to send zap: ' + error.message, 'error');
+        
+        // Reset button
+        const sendButton = document.getElementById('zap-send-button');
+        sendButton.textContent = 'Send Zap';
+        sendButton.disabled = false;
       }
     }
   };
-  
-  // Add keyframe animations for collect effect
-  const style = document.createElement('style');
-  style.textContent = `
-    @keyframes collect {
-      0% { transform: scale(0.5); opacity: 1; }
-      100% { transform: scale(2); opacity: 0; }
-    }
-  `;
-  document.head.appendChild(style);
   
   // Initialize the game
   RelayWorld.init();
