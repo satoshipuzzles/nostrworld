@@ -1,0 +1,3930 @@
+// RelayWorld - Complete Enhanced Implementation
+(async function() {
+  // ===== Library Initialization =====
+  // Try to get NostrTools from various possible sources
+  let NostrTools;
+  if (window.NostrTools) {
+    NostrTools = window.NostrTools;
+  } else if (window.nostr && window.nostr.nip01) {
+    NostrTools = window.nostr.nip01;
+  } else {
+    // Create minimal wrapper if nothing is available
+    NostrTools = {
+      relayInit: function(url) {
+        console.warn("Using fallback relay implementation");
+        const ws = new WebSocket(url);
+        return {
+          url,
+          socket: ws,
+          sub: function(filters) {
+            const subId = Math.random().toString(36).substring(2, 15);
+            ws.send(JSON.stringify(["REQ", subId, ...filters]));
+            
+            const handlers = {
+              eventHandlers: [],
+              eoseHandlers: []
+            };
+            
+            const sub = {
+              unsub: function() {
+                ws.send(JSON.stringify(["CLOSE", subId]));
+              },
+              on: function(type, handler) {
+                if (type === 'event') handlers.eventHandlers.push(handler);
+                if (type === 'eose') handlers.eoseHandlers.push(handler);
+                return sub;
+              }
+            };
+            
+            ws.addEventListener('message', (e) => {
+              const data = JSON.parse(e.data);
+              if (data[0] === "EVENT" && data[1] === subId) {
+                handlers.eventHandlers.forEach(handler => handler(data[2]));
+              }
+              if (data[0] === "EOSE" && data[1] === subId) {
+                handlers.eoseHandlers.forEach(handler => handler());
+              }
+            });
+            
+            return sub;
+          },
+          publish: function(event) {
+            ws.send(JSON.stringify(["EVENT", event]));
+            return true;
+          },
+          on: function(event, callback) {
+            if (event === 'connect') {
+              ws.addEventListener('open', callback);
+            } else if (event === 'error') {
+              ws.addEventListener('error', callback);
+            }
+            return this;
+          },
+          connect: function() {
+            // WebSocket already tries to connect on creation
+            return this;
+          }
+        };
+      }
+    };
+  }
+  
+  // ===== Core System =====
+  const canvas = document.getElementById('game-canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Create HTML for new UI elements
+  function createUIElements() {
+    // Add leaderboard button to top bar
+    const topBar = document.getElementById('top-bar');
+    const leaderboardButton = document.createElement('button');
+    leaderboardButton.id = 'leaderboard-button';
+    leaderboardButton.innerHTML = '🏆';
+    leaderboardButton.title = 'Leaderboard';
+    topBar.appendChild(leaderboardButton);
+    
+    // Replace chat container with tabbed version
+    const chatContainer = document.getElementById('chat-container');
+    chatContainer.innerHTML = `
+      <div id="chat-tabs">
+        <button id="tab-game" class="chat-tab active">Game</button>
+        <button id="tab-global" class="chat-tab">Global</button>
+      </div>
+      <div id="chat-messages" class="chat-messages"></div>
+      <div id="global-messages" class="chat-messages" style="display: none;"></div>
+      <div class="chat-input-wrapper">
+        <input id="chat-input" placeholder="Type a message...">
+        <button id="send-chat-button">Send</button>
+      </div>
+    `;
+    
+    // Create leaderboard
+    const leaderboard = document.createElement('div');
+    leaderboard.id = 'leaderboard';
+    leaderboard.innerHTML = `
+      <div class="leaderboard-header">
+        <h3>Top Players</h3>
+        <button id="leaderboard-close">×</button>
+      </div>
+      <div id="leaderboard-list"></div>
+    `;
+    document.body.appendChild(leaderboard);
+    
+    // Create cinema interface
+    const cinemaInterface = document.createElement('div');
+    cinemaInterface.id = 'cinema-interface';
+    cinemaInterface.className = 'game-popup';
+    cinemaInterface.innerHTML = `
+      <div class="popup-header">
+        <h3>The Nostr Cinema</h3>
+        <button id="cinema-close">×</button>
+      </div>
+      <div class="cinema-content">
+        <div id="cinema-current">
+          <h4>Now Showing</h4>
+          <div id="cinema-screen"></div>
+        </div>
+        <div id="cinema-chat">
+          <div id="cinema-messages"></div>
+          <div class="chat-input-wrapper">
+            <input id="cinema-input" placeholder="Chat about the video...">
+            <button id="cinema-chat-send">Send</button>
+          </div>
+        </div>
+        <div id="cinema-controls">
+          <h4>Submit Content</h4>
+          <input id="cinema-url" placeholder="YouTube URL, image URL, etc.">
+          <button id="cinema-submit">Submit for viewing</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(cinemaInterface);
+    
+    // Create market interface
+    const marketInterface = document.createElement('div');
+    marketInterface.id = 'market-interface';
+    marketInterface.className = 'game-popup';
+    marketInterface.innerHTML = `
+      <div class="popup-header">
+        <h3>Zap Market</h3>
+        <button id="market-close">×</button>
+      </div>
+      <div class="market-content">
+        <div id="market-listings">
+          <h4>Available Items</h4>
+          <div id="market-items"></div>
+        </div>
+        <div id="market-controls">
+          <h4>List an Item</h4>
+          <input id="market-item-name" placeholder="Item name">
+          <input id="market-item-price" type="number" placeholder="Price in sats">
+          <button id="market-list-item">List Item</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(marketInterface);
+    
+    // Create cafe interface
+    const cafeInterface = document.createElement('div');
+    cafeInterface.id = 'cafe-interface';
+    cafeInterface.className = 'game-popup';
+    cafeInterface.innerHTML = `
+      <div class="popup-header">
+        <h3>Relay Cafe</h3>
+        <button id="cafe-close">×</button>
+      </div>
+      <div class="cafe-content">
+        <div id="cafe-users">
+          <h4>Users at the Cafe</h4>
+          <div id="cafe-user-list"></div>
+        </div>
+        <div id="cafe-chat">
+          <div id="cafe-messages"></div>
+          <div class="chat-input-wrapper">
+            <input id="cafe-input" placeholder="Chat with cafe visitors...">
+            <button id="cafe-chat-send">Send</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(cafeInterface);
+    
+    // Add note detail popup
+    const noteDetailPopup = document.createElement('div');
+    noteDetailPopup.id = 'note-detail-popup';
+    noteDetailPopup.className = 'game-popup';
+    noteDetailPopup.innerHTML = `
+      <div class="popup-header">
+        <h3>Note</h3>
+        <button id="note-detail-close">×</button>
+      </div>
+      <div id="note-author-info"></div>
+      <div id="note-content"></div>
+      <div id="note-actions">
+        <button id="note-reply-button">Reply</button>
+        <button id="note-zap-button">Zap</button>
+      </div>
+      <div id="note-replies"></div>
+    `;
+    document.body.appendChild(noteDetailPopup);
+    
+    // Add CSS for new elements
+    const style = document.createElement('style');
+    style.textContent = `
+      /* Leaderboard Styles */
+      #leaderboard {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 400px;
+        max-width: 90vw;
+        background-color: var(--color-bg-light);
+        border: var(--border-primary);
+        border-radius: var(--border-radius-lg);
+        padding: 20px;
+        display: none;
+        box-shadow: var(--shadow-lg);
+        z-index: 300;
+        max-height: 80vh;
+        overflow-y: auto;
+      }
+      
+      .leaderboard-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--color-primary-dark);
+        padding-bottom: 10px;
+      }
+      
+      .leaderboard-header h3 {
+        margin: 0;
+        color: var(--color-primary);
+        font-size: 22px;
+      }
+      
+      #leaderboard-close {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background-color: var(--color-error);
+        color: white;
+        border: none;
+        font-size: 18px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      
+      .leaderboard-player {
+        display: flex;
+        align-items: center;
+        padding: 10px;
+        border-bottom: 1px solid var(--color-primary-dark);
+        transition: background-color 0.2s;
+        cursor: pointer;
+      }
+      
+      .leaderboard-player:hover {
+        background-color: rgba(139, 172, 15, 0.1);
+      }
+      
+      .leaderboard-player.current-player {
+        background-color: rgba(139, 172, 15, 0.2);
+      }
+      
+      .leaderboard-player .rank {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background-color: var(--color-primary-dark);
+        color: var(--color-text);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-right: 15px;
+        font-weight: bold;
+      }
+      
+      .leaderboard-player .avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        overflow: hidden;
+        margin-right: 15px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-color: var(--color-primary-dark);
+        color: var(--color-text);
+        font-weight: bold;
+        font-size: 20px;
+      }
+      
+      .leaderboard-player .avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      
+      .leaderboard-player .info {
+        flex: 1;
+      }
+      
+      .leaderboard-player .name {
+        font-weight: bold;
+        margin-bottom: 3px;
+      }
+      
+      .leaderboard-player .score {
+        color: var(--color-secondary);
+      }
+      
+      #leaderboard-button {
+        background-color: var(--color-primary-dark);
+        color: var(--color-text);
+        border: 1px solid var(--color-primary);
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 20px;
+        margin-left: 10px;
+      }
+      
+      /* Special Locations */
+      .game-popup {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 600px;
+        max-width: 90vw;
+        background-color: var(--color-bg-light);
+        border: var(--border-primary);
+        border-radius: var(--border-radius-lg);
+        padding: 20px;
+        display: none;
+        box-shadow: var(--shadow-lg);
+        z-index: 300;
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+      
+      .popup-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--color-primary-dark);
+        padding-bottom: 10px;
+      }
+      
+      .popup-header h3 {
+        margin: 0;
+        color: var(--color-primary);
+        font-size: 22px;
+      }
+      
+      .popup-header button {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background-color: var(--color-error);
+        color: white;
+        border: none;
+        font-size: 18px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      
+      /* Cinema Styles */
+      #cinema-interface {
+        height: 600px;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      .cinema-content {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+      }
+      
+      #cinema-current {
+        margin-bottom: 20px;
+      }
+      
+      #cinema-screen {
+        width: 100%;
+        height: 240px;
+        background-color: #000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 15px;
+        border-radius: var(--border-radius-md);
+        overflow: hidden;
+      }
+      
+      #cinema-chat {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 20px;
+      }
+      
+      #cinema-messages {
+        flex: 1;
+        overflow-y: auto;
+        background-color: rgba(18, 18, 18, 0.6);
+        border: 1px solid var(--color-primary-dark);
+        border-radius: var(--border-radius-md);
+        padding: 10px;
+        margin-bottom: 10px;
+        min-height: 120px;
+      }
+      
+      #cinema-controls {
+        border-top: 1px solid var(--color-primary-dark);
+        padding-top: 15px;
+      }
+      
+      #cinema-url {
+        width: 100%;
+        margin-bottom: 10px;
+      }
+      
+      #cinema-submit {
+        background-color: var(--color-primary);
+        color: var(--color-bg);
+        border: none;
+        border-radius: var(--border-radius-sm);
+        padding: 8px 16px;
+        font-size: 16px;
+        font-weight: bold;
+        width: 100%;
+      }
+      
+      /* Chat Improvements */
+      #chat-tabs {
+        display: flex;
+        margin-bottom: 10px;
+      }
+      
+      .chat-tab {
+        flex: 1;
+        background-color: var(--color-bg);
+        color: var(--color-text-dim);
+        border: 1px solid var(--color-primary-dark);
+        border-bottom: none;
+        border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
+        padding: 8px 0;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      
+      .chat-tab.active {
+        background-color: var(--color-primary-dark);
+        color: var(--color-text);
+      }
+      
+      .chat-image {
+        max-width: 200px;
+        max-height: 150px;
+        margin: 5px 0;
+        border-radius: var(--border-radius-sm);
+      }
+      
+      .chat-message {
+        cursor: default;
+      }
+      
+      .chat-message[data-pubkey] {
+        cursor: pointer;
+        padding: 6px;
+        border-radius: var(--border-radius-sm);
+        transition: background-color 0.2s;
+      }
+      
+      .chat-message[data-pubkey]:hover {
+        background-color: rgba(139, 172, 15, 0.1);
+      }
+      
+      .no-media {
+        color: var(--color-text-dim);
+        padding: 20px;
+        text-align: center;
+      }
+      
+      .media-link {
+        text-align: center;
+        padding: 20px;
+      }
+      
+      .media-link a {
+        display: inline-block;
+        background-color: var(--color-primary-dark);
+        color: var(--color-text);
+        padding: 10px 20px;
+        border-radius: var(--border-radius-md);
+        text-decoration: none;
+      }
+      
+      /* Note Detail Popup */
+      #note-author-info {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid var(--color-primary-dark);
+      }
+      
+      #note-author-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        margin-right: 15px;
+        object-fit: cover;
+      }
+      
+      #note-author-name {
+        font-weight: bold;
+        font-size: 18px;
+        margin-bottom: 5px;
+      }
+      
+      #note-author-npub {
+        color: var(--color-text-dim);
+        font-size: 14px;
+      }
+      
+      #note-content {
+        margin-bottom: 20px;
+        font-size: 16px;
+        line-height: 1.5;
+      }
+      
+      #note-actions {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      
+      #note-actions button {
+        flex: 1;
+        background-color: var(--color-primary-dark);
+        color: var(--color-text);
+        border: 1px solid var(--color-primary);
+        border-radius: var(--border-radius-sm);
+        padding: 8px 12px;
+        font-size: 16px;
+      }
+      
+      #note-replies {
+        border-top: 1px solid var(--color-primary-dark);
+        padding-top: 15px;
+      }
+      
+      .reply {
+        padding: 10px;
+        margin-bottom: 10px;
+        background-color: rgba(30, 30, 30, 0.7);
+        border-radius: var(--border-radius-md);
+      }
+      
+      /* Cafe Styles */
+      #cafe-users {
+        margin-bottom: 20px;
+      }
+      
+      #cafe-user-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      
+      .cafe-user {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 70px;
+      }
+      
+      .cafe-user-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        margin-bottom: 5px;
+        object-fit: cover;
+      }
+      
+      .cafe-user-name {
+        font-size: 12px;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        width: 100%;
+      }
+      
+      #cafe-messages {
+        height: 200px;
+        overflow-y: auto;
+        background-color: rgba(18, 18, 18, 0.6);
+        border: 1px solid var(--color-primary-dark);
+        border-radius: var(--border-radius-md);
+        padding: 10px;
+        margin-bottom: 10px;
+      }
+      
+      /* Market Styles */
+      #market-listings {
+        margin-bottom: 20px;
+      }
+      
+      #market-items {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 15px;
+      }
+      
+      .market-item {
+        background-color: rgba(30, 30, 30, 0.7);
+        border-radius: var(--border-radius-md);
+        padding: 15px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      
+      .market-item-name {
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+      
+      .market-item-price {
+        color: var(--color-secondary);
+        margin-bottom: 10px;
+      }
+      
+      .market-buy-button {
+        background-color: var(--color-primary);
+        color: var(--color-bg);
+        border: none;
+        border-radius: var(--border-radius-sm);
+        padding: 5px 10px;
+        font-size: 14px;
+        width: 100%;
+      }
+      
+      #market-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding-top: 15px;
+        border-top: 1px solid var(--color-primary-dark);
+      }
+      
+      #market-controls input {
+        width: 100%;
+      }
+      
+      #market-list-item {
+        background-color: var(--color-primary);
+        color: var(--color-bg);
+        border: none;
+        border-radius: var(--border-radius-sm);
+        padding: 8px 12px;
+        font-size: 16px;
+      }
+      
+      /* Chat Message Improvements */
+      .chat-messages {
+        height: 120px;
+        overflow-y: auto;
+        margin-bottom: 10px;
+        padding: 10px;
+        background-color: rgba(18, 18, 18, 0.6);
+        border: 1px solid var(--color-primary-dark);
+        border-radius: var(--border-radius-md);
+        font-size: 16px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--color-primary-dark) rgba(18, 18, 18, 0.6);
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  // Resize canvas to fit window
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+  
+  // ===== Game State =====
+  const WORLD_SIZE = 5000; // Larger world for more content
+  const VOICE_RANGE = 300;
+  const INTERACTION_RANGE = 100;
+  const VIEW_DISTANCE = 1200; // Only render elements within this distance
+  
+  const RelayWorld = {
+    player: null,
+    users: new Map(),
+    gameRelay: null,
+    loginRelay: null,
+    explorerRelays: new Map(),
+    activeExplorerRelay: null,
+    subscriptions: new Map(),
+    items: [],
+    treasures: [],
+    specialLocations: [],
+    portals: [
+      { id: "forest", x: 500, y: 500, color: "#228B22" },
+      { id: "mountain", x: WORLD_SIZE - 500, y: WORLD_SIZE - 500, color: "#808080" }
+    ],
+    camera: { x: 0, y: 0 },
+    input: { up: false, down: false, left: false, right: false },
+    weather: { current: "clear", types: ["clear", "rain", "storm"] },
+    audio: {
+      peer: null,
+      localStream: null,
+      connections: {},
+      isVoiceChatActive: false
+    },
+    loadedImages: new Map(), // For caching loaded images
+    chatMode: 'game', // Default chat mode
+    
+    // Game initialization
+    init: async function() {
+      // Create UI elements
+      createUIElements();
+      
+      // Setup event listeners
+      this.setupEventListeners();
+      document.getElementById('login-button').addEventListener('click', this.login.bind(this));
+      
+      // Start game loop
+      this.gameLoop();
+    },
+    
+    // Login with Nostr extension
+    login: async function() {
+      try {
+        // Check for extension
+        if (!window.nostr) {
+          this.showToast("Nostr extension not found. Please install one first.", "error");
+          return;
+        }
+        
+        // Show loading state
+        const loginButton = document.getElementById('login-button');
+        loginButton.innerHTML = '<span class="spinner"></span> Connecting...';
+        loginButton.disabled = true;
+        
+        // Get public key
+        const pubkey = await window.nostr.getPublicKey();
+        
+        // Initialize player
+        this.player = {
+          pubkey,
+          x: WORLD_SIZE / 2,
+          y: WORLD_SIZE / 2,
+          score: 0,
+          inventory: [],
+          following: new Set(),
+          profile: null
+        };
+        
+        // Connect to relays
+        await this.connectToRelays();
+        
+        // Load player profile
+        await this.loadPlayerProfile();
+        
+        // Load saved player data
+        this.loadPlayerScoreFromStorage();
+        
+        // Generate world items
+        this.generateWorldItems();
+        
+        // Update UI
+        this.updateUI();
+        
+        // Hide login screen
+        const loginScreen = document.getElementById('login-screen');
+        loginScreen.style.opacity = 0;
+        setTimeout(() => {
+          loginScreen.style.display = 'none';
+        }, 500);
+        
+        // Show welcome message
+        this.showToast("Welcome to Relay World!", "success");
+      } catch (error) {
+        console.error("Login error:", error);
+        this.showToast("Login failed: " + error.message, "error");
+        
+        // Reset login button
+        const loginButton = document.getElementById('login-button');
+        loginButton.innerHTML = 'CONNECT WITH NOSTR';
+        loginButton.disabled = false;
+      }
+    },
+    
+    // Connect to relays
+    connectToRelays: async function() {
+      try {
+        // Default relays
+        const gameRelayUrl = "wss://relay.damus.io"; // Using damus as game relay for testing
+        const loginRelayUrl = "wss://relay.damus.io";
+        const explorerRelays = [
+          "wss://relay.damus.io",
+          "wss://nos.lol",
+          "wss://nostr.wine"
+        ];
+        
+        // Connect to game relay
+        this.showToast("Connecting to game relay...", "info");
+        this.gameRelay = await this.connectRelay(gameRelayUrl);
+        
+        // Connect to login relay
+        this.loginRelay = await this.connectRelay(loginRelayUrl);
+        
+        // Connect to explorer relays
+        for (const url of explorerRelays) {
+          try {
+            const relay = await this.connectRelay(url);
+            this.explorerRelays.set(url, relay);
+          } catch (error) {
+            console.warn(`Failed to connect to explorer relay ${url}:`, error);
+          }
+        }
+        
+        // Set active explorer relay
+        if (this.explorerRelays.size > 0) {
+          this.activeExplorerRelay = explorerRelays[0];
+        }
+        
+        // Subscribe to events if game relay is connected
+        if (this.gameRelay) {
+          this.subscribeToEvents();
+        }
+        
+        // Update relay selector
+        this.updateRelaySelector();
+      } catch (error) {
+        console.error("Relay connection error:", error);
+        throw error;
+      }
+    },
+    
+    // Connect to a single relay
+    connectRelay: function(url) {
+      return new Promise((resolve, reject) => {
+        try {
+          console.log(`Connecting to relay: ${url}`);
+          
+          // Initialize relay using NostrTools
+          let relay;
+          try {
+            relay = NostrTools.relayInit(url);
+          } catch (error) {
+            console.error("Failed to initialize relay:", error);
+            reject(new Error(`Failed to initialize relay: ${error.message}`));
+            return;
+          }
+          
+          relay.on('connect', () => {
+            console.log(`Connected to ${url}`);
+            resolve(relay);
+          });
+          
+          relay.on('error', (error) => {
+            console.error(`Error connecting to ${url}:`, error);
+            reject(new Error(`Failed to connect to ${url}`));
+          });
+          
+          relay.connect();
+        } catch (error) {
+          console.error(`Error setting up relay ${url}:`, error);
+          reject(error);
+        }
+      });
+    },
+    
+    // Subscribe to events from relays
+    subscribeToEvents: function() {
+      if (!this.gameRelay) {
+        console.error("Game relay not connected");
+        return;
+      }
+      
+      try {
+        // Subscribe to game events from game relay
+        // Include new event kinds for cinema, market, cafe
+        const gameFilter = [{ 
+          kinds: [1, 420001, 420002, 420010, 420011, 420012, 420020, 420030],
+          limit: 100
+        }];
+        const gameSub = this.gameRelay.sub(gameFilter);
+        
+        gameSub.on('event', event => {
+          this.processGameEvent(event);
+        });
+        
+        this.subscriptions.set('game', gameSub);
+        
+        // Subscribe to explorer content
+        if (this.activeExplorerRelay) {
+          const exploreRelay = this.explorerRelays.get(this.activeExplorerRelay);
+          if (exploreRelay) {
+            // Subscribe to kind 1 notes with higher limit
+            const kindSub = exploreRelay.sub([{ kinds: [1], limit: 100 }]);
+            kindSub.on('event', event => {
+              this.processExplorerEvent(event);
+            });
+            this.subscriptions.set('explorer', kindSub);
+            
+            // Subscribe to profiles with higher limit
+            const profileSub = exploreRelay.sub([{ kinds: [0], limit: 50 }]);
+            profileSub.on('event', event => {
+              this.processExplorerEvent(event);
+            });
+            this.subscriptions.set('profiles', profileSub);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to subscribe to events:", error);
+      }
+    },
+    
+    // Process game event
+    processGameEvent: function(event) {
+      if (!event || !event.kind) return;
+      
+      try {
+        switch (event.kind) {
+          case 1: // Note (global chat)
+            this.handleGlobalChatEvent(event);
+            break;
+          case 420001: // Position
+            this.handlePositionEvent(event);
+            break;
+          case 420002: // Stats
+            this.handleStatsEvent(event);
+            break;
+          case 420010: // Game Chat
+            this.handleGameChatEvent(event);
+            break;
+          case 420011: // Cinema content
+            this.handleCinemaContentEvent(event);
+            break;
+          case 420012: // Cinema chat
+            this.handleCinemaChatEvent(event);
+            break;
+          case 420020: // Market listing
+            this.handleMarketListingEvent(event);
+            break;
+          case 420030: // Cafe chat
+            this.handleCafeChatEvent(event);
+            break;
+        }
+      } catch (error) {
+        console.error("Error processing game event:", error);
+      }
+    },
+    
+    // Process explorer event
+    processExplorerEvent: function(event) {
+      if (!event || !event.pubkey) return;
+      
+      try {
+        // Create user if not exists
+        if (!this.users.has(event.pubkey) && event.pubkey !== this.player?.pubkey) {
+          // Generate deterministic position from pubkey
+          const hash = event.pubkey;
+          const x = parseInt(hash.substring(0, 8), 16) % WORLD_SIZE;
+          const y = parseInt(hash.substring(8, 16), 16) % WORLD_SIZE;
+          
+          this.users.set(event.pubkey, {
+            pubkey: event.pubkey,
+            x, y,
+            profile: null,
+            notes: []
+          });
+        }
+        
+        // Process based on kind
+        switch (event.kind) {
+          case 0: // Profile
+            this.handleProfileEvent(event);
+            break;
+          case 1: // Note
+            this.handleNoteEvent(event);
+            break;
+          case 3: // Contacts
+            this.handleContactsEvent(event);
+            break;
+        }
+      } catch (error) {
+        console.error("Error processing explorer event:", error);
+      }
+    },
+    
+    // Handle player position event
+    handlePositionEvent: function(event) {
+      try {
+        if (!event.content) return;
+        
+        const position = JSON.parse(event.content);
+        
+        // Update user position
+        if (this.users.has(event.pubkey)) {
+          const user = this.users.get(event.pubkey);
+          user.x = position.x;
+          user.y = position.y;
+        } else if (event.pubkey !== this.player?.pubkey) {
+          // New player joined
+          this.users.set(event.pubkey, {
+            pubkey: event.pubkey,
+            x: position.x,
+            y: position.y,
+            profile: null,
+            notes: []
+          });
+        }
+      } catch (e) {
+        console.error('Invalid position event:', e);
+      }
+    },
+    
+    // Handle stats event
+    handleStatsEvent: function(event) {
+      try {
+        if (!event.content) return;
+        
+        const stats = JSON.parse(event.content);
+        const user = this.users.get(event.pubkey);
+        
+        if (user) {
+          user.score = stats.score || 0;
+          // Update other stats...
+        }
+      } catch (e) {
+        console.error('Invalid stats event:', e);
+      }
+    },
+    
+    // Handle game chat event
+    handleGameChatEvent: function(event) {
+      // Skip processing if this is our own message
+      if (this.player && event.pubkey === this.player.pubkey) return;
+      
+      const user = this.users.get(event.pubkey) || 
+        (event.pubkey === this.player?.pubkey ? { profile: this.player.profile } : null);
+      
+      const name = user?.profile?.name || event.pubkey.substring(0, 8);
+      this.addChatMessage(name, event.content, false, event.pubkey);
+    },
+    
+    // Handle global chat event
+    handleGlobalChatEvent: function(event) {
+      // Check if it has chat tag
+      const isChatMessage = event.tags.some(t => t[0] === 't' && t[1] === 'chat');
+      
+      if (!isChatMessage) {
+        // Only process as chat if it has the chat tag
+        return;
+      }
+      
+      // Skip processing if this is our own message
+      if (this.player && event.pubkey === this.player.pubkey) return;
+      
+      const user = this.users.get(event.pubkey) || 
+        (event.pubkey === this.player?.pubkey ? { profile: this.player.profile } : null);
+      
+      const name = user?.profile?.name || event.pubkey.substring(0, 8);
+      this.addGlobalMessage(name, event.content, false, event.pubkey);
+    },
+    
+    // Handle cinema content event
+    handleCinemaContentEvent: function(event) {
+      try {
+        if (!event.content) return;
+        
+        const content = JSON.parse(event.content);
+        
+        // Update cinema
+        const cinema = this.specialLocations?.find(loc => loc.id === "cinema");
+        if (cinema) {
+          cinema.currentMedia = content.url;
+          
+          // Update display if cinema interface is open
+          if (document.getElementById('cinema-interface')?.style.display === 'block') {
+            this.updateCinemaDisplay(cinema);
+          }
+        }
+      } catch (error) {
+        console.error("Error processing cinema content event:", error);
+      }
+    },
+    
+    // Handle cinema chat event
+    handleCinemaChatEvent: function(event) {
+      // Skip processing if this is our own message
+      if (this.player && event.pubkey === this.player.pubkey) return;
+      
+      const user = this.users.get(event.pubkey) || 
+        (event.pubkey === this.player?.pubkey ? { profile: this.player.profile } : null);
+      
+      const name = user?.profile?.name || event.pubkey.substring(0, 8);
+      
+      // Add to cinema chat if open
+      if (document.getElementById('cinema-interface')?.style.display === 'block') {
+        this.addCinemaChatMessage(name, event.content, false, event.pubkey);
+      }
+    },
+    
+    // Handle market listing event
+    handleMarketListingEvent: function(event) {
+      try {
+        if (!event.content) return;
+        
+        const listing = JSON.parse(event.content);
+        
+        // Process market listing...
+        const marketItemsContainer = document.getElementById('market-items');
+        if (marketItemsContainer && document.getElementById('market-interface').style.display === 'block') {
+          const itemEl = document.createElement('div');
+          itemEl.className = 'market-item';
+          itemEl.innerHTML = `
+            <div class="market-item-name">${listing.name}</div>
+            <div class="market-item-price">${listing.price} sats</div>
+            <button class="market-buy-button" data-id="${event.id}">Buy</button>
+          `;
+          
+          itemEl.querySelector('.market-buy-button').addEventListener('click', () => {
+            this.buyMarketItem(event.id, listing, event.pubkey);
+          });
+          
+          marketItemsContainer.appendChild(itemEl);
+        }
+      } catch (error) {
+        console.error("Error processing market listing event:", error);
+      }
+    },
+    
+    // Handle cafe chat event
+    handleCafeChatEvent: function(event) {
+      // Skip processing if this is our own message
+      if (this.player && event.pubkey === this.player.pubkey) return;
+      
+      const user = this.users.get(event.pubkey) || 
+        (event.pubkey === this.player?.pubkey ? { profile: this.player.profile } : null);
+      
+      const name = user?.profile?.name || event.pubkey.substring(0, 8);
+      
+      // Add to cafe chat if open
+      if (document.getElementById('cafe-interface')?.style.display === 'block') {
+        this.addCafeChatMessage(name, event.content, false, event.pubkey);
+      }
+    },
+    
+    // Handle profile event
+    handleProfileEvent: function(event) {
+      try {
+        if (!event.content) return;
+        
+        let profile;
+        try {
+          profile = JSON.parse(event.content);
+        } catch (e) {
+          console.error("Invalid profile JSON:", e);
+          return;
+        }
+        
+        // Update user profile
+        if (this.users.has(event.pubkey)) {
+          const user = this.users.get(event.pubkey);
+          user.profile = {
+            name: profile.name || profile.display_name || event.pubkey.substring(0, 8),
+            picture: profile.picture || null,
+            about: profile.about || "",
+            lud16: profile.lud16 || null
+          };
+        }
+        
+        // Update player profile if this is the current player
+        if (this.player && event.pubkey === this.player.pubkey) {
+          this.player.profile = {
+            name: profile.name || profile.display_name || event.pubkey.substring(0, 8),
+            picture: profile.picture || null,
+            about: profile.about || "",
+            lud16: profile.lud16 || null
+          };
+          this.updateUI();
+        }
+      } catch (e) {
+        console.error('Error processing profile event:', e);
+      }
+    },
+    
+    // Handle note event
+    handleNoteEvent: function(event) {
+      if (this.users.has(event.pubkey)) {
+        const user = this.users.get(event.pubkey);
+        
+        // Add to user's notes
+        user.notes.unshift({
+          id: event.id,
+          content: event.content,
+          created_at: event.created_at
+        });
+        
+        // Limit to 20 notes
+        if (user.notes.length > 20) {
+          user.notes.pop();
+        }
+      }
+    },
+    
+    // Handle contacts event
+    handleContactsEvent: function(event) {
+      // Process follows
+      if (this.player && event.pubkey === this.player.pubkey) {
+        // Clear existing follows
+        this.player.following = new Set();
+        
+        // Add each p-tag as a follow
+        for (const tag of event.tags) {
+          if (tag[0] === 'p') {
+            this.player.following.add(tag[1]);
+          }
+        }
+      }
+    },
+    
+    // Load player profile
+    loadPlayerProfile: async function() {
+      if (!this.player || !this.loginRelay) return;
+      
+      // Request profile from login relay
+      const filter = { kinds: [0], authors: [this.player.pubkey], limit: 1 };
+      try {
+        const profileSub = this.loginRelay.sub([filter]);
+        
+        profileSub.on('event', event => {
+          this.processExplorerEvent(event);
+        });
+        
+        // Request follows
+        const followsSub = this.loginRelay.sub([{ kinds: [3], authors: [this.player.pubkey], limit: 1 }]);
+        followsSub.on('event', event => {
+          this.processExplorerEvent(event);
+        });
+      } catch (error) {
+        console.error("Failed to subscribe to profile events:", error);
+      }
+    },
+    
+    // Fetch profiles for known users
+    fetchProfiles: async function() {
+      if (!this.loginRelay) return;
+      
+      try {
+        console.log("Fetching profiles for known users...");
+        
+        // Collect all pubkeys we need profiles for
+        const pubkeysToFetch = Array.from(this.users.keys());
+        
+        // Split into batches of 50 to avoid overloading relays
+        const batchSize = 50;
+        for (let i = 0; i < pubkeysToFetch.length; i += batchSize) {
+          const batch = pubkeysToFetch.slice(i, i + batchSize);
+          
+          // Request profiles from all connected relays for redundancy
+          for (const [url, relay] of this.explorerRelays) {
+            const profileSub = relay.sub([{ kinds: [0], authors: batch }]);
+            
+            profileSub.on('event', event => {
+              this.processExplorerEvent(event);
+            });
+            
+            // Wait for a short time then move on to avoid hanging
+            await new Promise(resolve => {
+              const timeout = setTimeout(resolve, 2000);
+              profileSub.on('eose', () => {
+                clearTimeout(timeout);
+                resolve();
+              });
+            });
+          }
+        }
+        
+        console.log("Profile fetching complete");
+      } catch (error) {
+        console.error("Error fetching profiles:", error);
+      }
+    },
+    
+    // Load player score from local storage
+    loadPlayerScoreFromStorage: function() {
+      if (!this.player || !localStorage) return;
+      
+      try {
+        const savedData = localStorage.getItem(`relayworld-player-${this.player.pubkey}`);
+        if (savedData) {
+          const data = JSON.parse(savedData);
+          if (data.score && data.score > this.player.score) {
+            this.player.score = data.score;
+            this.updateScoreDisplay();
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load player data from storage:", error);
+      }
+    },
+    
+    // Save player score to local storage
+    savePlayerScoreToStorage: function() {
+      if (!this.player || !localStorage) return;
+      
+      try {
+        const data = {
+          score: this.player.score,
+          inventory: this.player.inventory.length,
+          lastUpdate: Date.now()
+        };
+        
+        localStorage.setItem(`relayworld-player-${this.player.pubkey}`, JSON.stringify(data));
+      } catch (error) {
+        console.error("Failed to save player data to storage:", error);
+      }
+    },
+    
+    // Generate world items
+    generateWorldItems: function() {
+      // Generate collectibles
+      for (let i = 0; i < 60; i++) {
+        const x = Math.random() * WORLD_SIZE;
+        const y = Math.random() * WORLD_SIZE;
+        
+        this.items.push({
+          id: `item-${Date.now()}-${i}`,
+          x, y,
+          value: 10 + Math.floor(Math.random() * 90),
+          emoji: ["💎", "🍎", "🔑", "📜", "🪙"][Math.floor(Math.random() * 5)]
+        });
+      }
+      
+      // Generate treasures
+      for (let i = 0; i < 8; i++) {
+        const x = Math.random() * WORLD_SIZE;
+        const y = Math.random() * WORLD_SIZE;
+        
+        this.treasures.push({
+          id: `treasure-${Date.now()}-${i}`,
+          x, y,
+          unlocking: false
+        });
+      }
+      
+      // Add special locations
+      this.specialLocations = [
+        {
+          id: "cinema",
+          name: "The Nostr Cinema",
+          x: WORLD_SIZE / 3,
+          y: WORLD_SIZE / 3,
+          radius: 80,
+          type: "building",
+          color: "#8A2BE2",
+          currentMedia: null,
+          visitors: new Set()
+        },
+        {
+          id: "market",
+          name: "Zap Market",
+          x: WORLD_SIZE * 2/3,
+          y: WORLD_SIZE * 2/3,
+          radius: 70,
+          type: "building",
+          color: "#FFD700",
+          listings: []
+        },
+        {
+          id: "cafe",
+          name: "Relay Cafe",
+          x: WORLD_SIZE * 1/4,
+          y: WORLD_SIZE * 3/4,
+          radius: 60,
+          type: "building",
+          color: "#8B4513",
+          visitors: new Set()
+        }
+      ];
+    },
+    
+    // Set up event listeners
+    setupEventListeners: function() {
+      // Keyboard controls
+      window.addEventListener('keydown', e => {
+        if (!this.player) return;
+        switch (e.key) {
+          case 'ArrowUp':
+          case 'w':
+          case 'W':
+            this.input.up = true;
+            break;
+          case 'ArrowDown':
+          case 's':
+          case 'S':
+            this.input.down = true;
+            break;
+          case 'ArrowLeft':
+          case 'a':
+          case 'A':
+            this.input.left = true;
+            break;
+          case 'ArrowRight':
+          case 'd':
+          case 'D':
+            this.input.right = true;
+            break;
+          case 'e':
+          case 'E':
+          case ' ':
+            this.triggerInteraction();
+            break;
+          case 'z':
+          case 'Z':
+            this.triggerZap();
+            break;
+          case 'l':
+          case 'L':
+            this.showLeaderboard();
+            break;
+        }
+      });
+      
+      window.addEventListener('keyup', e => {
+        if (!this.player) return;
+        switch (e.key) {
+          case 'ArrowUp':
+          case 'w':
+          case 'W':
+            this.input.up = false;
+            break;
+          case 'ArrowDown':
+          case 's':
+          case 'S':
+            this.input.down = false;
+            break;
+          case 'ArrowLeft':
+          case 'a':
+          case 'A':
+            this.input.left = false;
+            break;
+          case 'ArrowRight':
+          case 'd':
+          case 'D':
+            this.input.right = false;
+            break;
+        }
+      });
+      
+      // Canvas click for interactions
+      canvas.addEventListener('click', e => {
+        if (!this.player) return;
+        
+        // Convert click to world coordinates
+        const rect = canvas.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const worldX = screenX + this.camera.x - canvas.width / 2;
+        const worldY = screenY + this.camera.y - canvas.height / 2;
+        
+        // Check for user click
+        for (const [pubkey, user] of this.users) {
+          const distance = Math.sqrt(
+            Math.pow(user.x - worldX, 2) + 
+            Math.pow(user.y - worldY, 2)
+          );
+          
+          if (distance < 30) {
+            this.showUserPopup(pubkey);
+            return;
+          }
+        }
+        
+        // Check for special location click
+        for (const location of this.specialLocations || []) {
+          const distance = Math.sqrt(
+            Math.pow(location.x - worldX, 2) + 
+            Math.pow(location.y - worldY, 2)
+          );
+          
+          if (distance < location.radius) {
+            this.handleSpecialLocationInteraction(location);
+            return;
+          }
+        }
+      });
+      
+      // UI elements
+      document.getElementById('send-chat-button').addEventListener('click', () => this.sendChatMessage());
+      document.getElementById('chat-input').addEventListener('keyup', e => {
+        if (e.key === 'Enter') this.sendChatMessage();
+      });
+      document.getElementById('user-popup-close').addEventListener('click', () => this.hideUserPopup());
+      document.getElementById('follow-button').addEventListener('click', () => this.toggleFollowUser());
+      document.getElementById('chat-button').addEventListener('click', () => this.startDirectChat());
+      document.getElementById('voice-toggle').addEventListener('click', () => this.toggleVoiceChat());
+      document.getElementById('zap-button').addEventListener('click', () => this.triggerZap());
+      document.getElementById('voice-chat-button').addEventListener('click', () => this.startDirectVoiceChat());
+      document.getElementById('zap-close').addEventListener('click', () => {
+        document.getElementById('zap-interface').style.display = 'none';
+      });
+      document.getElementById('zap-send-button').addEventListener('click', () => this.sendZap());
+      document.getElementById('relay-selector').addEventListener('change', e => {
+        this.setActiveExplorerRelay(e.target.value);
+      });
+      document.getElementById('add-relay-button').addEventListener('click', () => {
+        const url = prompt("Enter relay URL (wss://...):");
+        if (url) this.addCustomRelay(url);
+      });
+      
+      // Adding click handlers for preset zap amounts
+      document.querySelectorAll('.zap-preset').forEach(button => {
+        button.addEventListener('click', () => {
+          document.getElementById('zap-amount').value = button.dataset.amount;
+        });
+      });
+      
+      // New UI elements
+      document.getElementById('tab-game').addEventListener('click', () => {
+        document.getElementById('tab-game').classList.add('active');
+        document.getElementById('tab-global').classList.remove('active');
+        document.getElementById('chat-messages').style.display = 'block';
+        document.getElementById('global-messages').style.display = 'none';
+        this.chatMode = 'game';
+      });
+      
+      document.getElementById('tab-global').addEventListener('click', () => {
+        document.getElementById('tab-global').classList.remove('active');
+        document.getElementById('tab-game').classList.add('active');
+        document.getElementById('chat-messages').style.display = 'none';
+        document.getElementById('global-messages').style.display = 'block';
+        this.chatMode = 'global';
+      });
+      
+      document.getElementById('leaderboard-button').addEventListener('click', () => {
+        this.showLeaderboard();
+      });
+      
+      document.getElementById('leaderboard-close').addEventListener('click', () => {
+        document.getElementById('leaderboard').style.display = 'none';
+      });
+      
+      document.getElementById('cinema-close').addEventListener('click', () => {
+        document.getElementById('cinema-interface').style.display = 'none';
+        // Leave cinema
+        if (this.specialLocations) {
+          const cinema = this.specialLocations.find(loc => loc.id === "cinema");
+          if (cinema && cinema.visitors && this.player) {
+            cinema.visitors.delete(this.player.pubkey);
+          }
+        }
+      });
+      
+      document.getElementById('cinema-submit').addEventListener('click', () => {
+        const url = document.getElementById('cinema-url').value.trim();
+        if (url) this.submitCinemaContent(url);
+      });
+      
+      document.getElementById('cinema-chat-send').addEventListener('click', () => {
+        this.sendCinemaMessage();
+      });
+      
+      document.getElementById('cinema-input').addEventListener('keyup', e => {
+        if (e.key === 'Enter') this.sendCinemaMessage();
+      });
+      
+      document.getElementById('market-close').addEventListener('click', () => {
+        document.getElementById('market-interface').style.display = 'none';
+      });
+      
+      document.getElementById('market-list-item').addEventListener('click', () => {
+        this.listMarketItem();
+      });
+      
+      document.getElementById('cafe-close').addEventListener('click', () => {
+        document.getElementById('cafe-interface').style.display = 'none';
+        // Leave cafe
+        if (this.specialLocations) {
+          const cafe = this.specialLocations.find(loc => loc.id === "cafe");
+          if (cafe && cafe.visitors && this.player) {
+            cafe.visitors.delete(this.player.pubkey);
+          }
+        }
+      });
+      
+      document.getElementById('cafe-chat-send').addEventListener('click', () => {
+        this.sendCafeMessage();
+      });
+      
+      document.getElementById('cafe-input').addEventListener('keyup', e => {
+        if (e.key === 'Enter') this.sendCafeMessage();
+      });
+      
+      document.getElementById('note-detail-close').addEventListener('click', () => {
+        document.getElementById('note-detail-popup').style.display = 'none';
+      });
+      
+      document.getElementById('note-reply-button').addEventListener('click', () => {
+        this.replyToNote();
+      });
+      
+      document.getElementById('note-zap-button').addEventListener('click', () => {
+        this.zapNote();
+      });
+    },
+    
+    // Game loop
+    gameLoop: function() {
+      // Only update if player exists
+      if (this.player) {
+        this.update();
+      }
+      
+      this.render();
+      requestAnimationFrame(() => this.gameLoop());
+    },
+    
+    // Update game state
+    update: function() {
+      if (!this.player) return;
+      
+      // Update player position
+      let dx = 0, dy = 0;
+      if (this.input.up) dy -= 1;
+      if (this.input.down) dy += 1;
+      if (this.input.left) dx -= 1;
+      if (this.input.right) dx += 1;
+      
+      // Normalize diagonal movement
+      if (dx !== 0 && dy !== 0) {
+        const len = Math.sqrt(dx * dx + dy * dy);
+        dx /= len;
+        dy /= len;
+      }
+      
+      // Apply movement
+      if (dx !== 0 || dy !== 0) {
+        this.player.x += dx * 5;
+        this.player.y += dy * 5;
+        
+        // Constrain to world bounds
+        this.player.x = Math.max(0, Math.min(this.player.x, WORLD_SIZE));
+        this.player.y = Math.max(0, Math.min(this.player.y, WORLD_SIZE));
+        
+        // Publish position update
+        this.publishPlayerPosition();
+      }
+      
+      // Update camera
+      this.camera.x = this.player.x;
+      this.camera.y = this.player.y;
+      
+      // Check for collectible pickup
+      this.checkCollectibles();
+      
+      // Update voice connections
+      if (this.audio.isVoiceChatActive) {
+        this.updateVoiceConnections();
+      }
+      
+      // Update special locations
+      this.updateSpecialLocations();
+    },
+    
+    // Render the game
+    render: function() {
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw background grid
+      this.drawGrid();
+      
+      // Draw world boundary
+      ctx.strokeStyle = 'rgba(139, 172, 15, 0.5)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(
+        -this.camera.x + canvas.width / 2, 
+        -this.camera.y + canvas.height / 2, 
+        WORLD_SIZE, 
+        WORLD_SIZE
+      );
+      
+      // Draw items (only those in view)
+      for (const item of this.items) {
+        const distance = Math.sqrt(
+          Math.pow(this.player.x - item.x, 2) + 
+          Math.pow(this.player.y - item.y, 2)
+        );
+        
+        if (distance <= VIEW_DISTANCE) {
+          this.drawItem(item);
+        }
+      }
+      
+      // Draw treasures (only those in view)
+      for (const treasure of this.treasures) {
+        const distance = Math.sqrt(
+          Math.pow(this.player.x - treasure.x, 2) + 
+          Math.pow(this.player.y - treasure.y, 2)
+        );
+        
+        if (distance <= VIEW_DISTANCE) {
+          this.drawTreasure(treasure);
+        }
+      }
+      
+      // Draw portals (only those in view)
+      for (const portal of this.portals) {
+        const distance = Math.sqrt(
+          Math.pow(this.player.x - portal.x, 2) + 
+          Math.pow(this.player.y - portal.y, 2)
+        );
+        
+        if (distance <= VIEW_DISTANCE) {
+          this.drawPortal(portal);
+        }
+      }
+      
+      // Draw special locations (only those in view)
+      if (this.specialLocations) {
+        for (const location of this.specialLocations) {
+          const distance = Math.sqrt(
+            Math.pow(this.player.x - location.x, 2) + 
+            Math.pow(this.player.y - location.y, 2)
+          );
+          
+          if (distance <= VIEW_DISTANCE) {
+            this.drawSpecialLocation(location);
+          }
+        }
+      }
+      
+      // Draw other players (only those in view)
+      for (const [_, user] of this.users) {
+        const distance = Math.sqrt(
+          Math.pow(this.player.x - user.x, 2) + 
+          Math.pow(this.player.y - user.y, 2)
+        );
+        
+        if (distance <= VIEW_DISTANCE) {
+          this.drawUser(user);
+        }
+      }
+      
+      // Draw player in center
+      if (this.player) {
+        this.drawPlayer();
+      }
+      
+      // Draw voice chat indicators
+      if (this.player && this.audio.isVoiceChatActive) {
+        this.drawVoiceRange();
+      }
+      
+      // Update mini-map
+      if (this.player) {
+        this.updateMiniMap();
+      }
+    },
+    
+    // Draw background grid
+    drawGrid: function() {
+      ctx.strokeStyle = 'rgba(139, 172, 15, 0.1)';
+      ctx.lineWidth = 1;
+      
+      const gridSize = 50;
+      const startX = Math.floor(this.camera.x / gridSize) * gridSize;
+      const startY = Math.floor(this.camera.y / gridSize) * gridSize;
+      const offsetX = startX - this.camera.x + canvas.width / 2;
+      const offsetY = startY - this.camera.y + canvas.height / 2;
+      
+      // Vertical lines
+      for (let x = 0; x <= canvas.width / gridSize + 1; x++) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX + x * gridSize, 0);
+        ctx.lineTo(offsetX + x * gridSize, canvas.height);
+        ctx.stroke();
+      }
+      
+      // Horizontal lines
+      for (let y = 0; y <= canvas.height / gridSize + 1; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, offsetY + y * gridSize);
+        ctx.lineTo(canvas.width, offsetY + y * gridSize);
+        ctx.stroke();
+      }
+    },
+    
+    // Draw a collectible item
+    drawItem: function(item) {
+      // Calculate screen position
+      const screenX = item.x - this.camera.x + canvas.width / 2;
+      const screenY = item.y - this.camera.y + canvas.height / 2;
+      
+      // Skip if out of view
+      if (screenX < -20 || screenX > canvas.width + 20 ||
+          screenY < -20 || screenY > canvas.height + 20) {
+        return;
+      }
+      
+      // Draw item
+      ctx.font = "20px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(item.emoji, screenX, screenY);
+    },
+    
+    // Draw a treasure
+    drawTreasure: function(treasure) {
+      // Calculate screen position
+      const screenX = treasure.x - this.camera.x + canvas.width / 2;
+      const screenY = treasure.y - this.camera.y + canvas.height / 2;
+      
+      // Skip if out of view
+      if (screenX < -20 || screenX > canvas.width + 20 ||
+          screenY < -20 || screenY > canvas.height + 20) {
+        return;
+      }
+      
+      // Draw treasure
+      ctx.font = "24px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("🎁", screenX, screenY);
+      
+      // Draw unlock progress if unlocking
+      if (treasure.unlocking) {
+        const elapsed = (Date.now() - treasure.unlockStart) / 3000;
+        ctx.fillStyle = "rgba(255, 215, 0, 0.3)";
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 25, 0, Math.PI * 2 * Math.min(elapsed, 1));
+        ctx.fill();
+      }
+    },
+    
+    // Draw a portal
+    drawPortal: function(portal) {
+      // Calculate screen position
+      const screenX = portal.x - this.camera.x + canvas.width / 2;
+      const screenY = portal.y - this.camera.y + canvas.height / 2;
+      
+      // Skip if out of view
+      if (screenX < -30 || screenX > canvas.width + 30 ||
+          screenY < -30 || screenY > canvas.height + 30) {
+        return;
+      }
+      
+      // Draw portal
+      const gradient = ctx.createRadialGradient(
+        screenX, screenY, 5,
+        screenX, screenY, 25
+      );
+      gradient.addColorStop(0, portal.color);
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, 25, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw inner circle
+      ctx.fillStyle = '#FFFFFF';
+      ctx.globalAlpha = 0.5 + 0.5 * Math.sin(Date.now() * 0.003);
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+    },
+    
+    // Draw a special location
+    drawSpecialLocation: function(location) {
+      // Calculate screen position
+      const screenX = location.x - this.camera.x + canvas.width / 2;
+      const screenY = location.y - this.camera.y + canvas.height / 2;
+      
+      // Skip if out of view
+      if (screenX < -location.radius || screenX > canvas.width + location.radius ||
+          screenY < -location.radius || screenY > canvas.height + location.radius) {
+        return;
+      }
+      
+      // Draw location circle
+      ctx.fillStyle = location.color;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, location.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+      
+      // Draw border
+      ctx.strokeStyle = location.color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, location.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      
+      // Draw name
+      ctx.fillStyle = '#FFFFFF';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+      ctx.font = '16px "Press Start 2P", monospace';
+      ctx.textAlign = 'center';
+      ctx.strokeText(location.name, screenX, screenY - location.radius - 10);
+      ctx.fillText(location.name, screenX, screenY - location.radius - 10);
+      
+      // Draw icon based on location type
+      let icon = "🏠"; // Default
+      switch(location.id) {
+        case "cinema": icon = "🎬"; break;
+        case "market": icon = "⚡"; break;
+        case "cafe": icon = "☕"; break;
+      }
+      
+      ctx.font = "32px sans-serif";
+      ctx.fillText(icon, screenX, screenY);
+      
+      // Draw visitor count if any
+      if (location.visitors && location.visitors.size > 0) {
+        ctx.font = '14px "VT323", monospace';
+        ctx.fillText(`${location.visitors.size} visitor${location.visitors.size > 1 ? 's' : ''}`, screenX, screenY + 30);
+      }
+    },
+    
+    // Draw another user
+    drawUser: function(user) {
+      // Calculate screen position
+      const screenX = user.x - this.camera.x + canvas.width / 2;
+      const screenY = user.y - this.camera.y + canvas.height / 2;
+      
+      // Skip if out of view
+      if (screenX < -50 || screenX > canvas.width + 50 ||
+          screenY < -50 || screenY > canvas.height + 50) {
+        return;
+      }
+      
+      // Generate a consistent color based on pubkey
+      const userColor = this.getUserColor(user.pubkey);
+      
+      // Draw avatar
+      if (user.profile && user.profile.picture) {
+        const img = new Image();
+        img.src = user.profile.picture;
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 15, 0, Math.PI * 2);
+        ctx.clip();
+        
+        // Try to draw image, fall back to colored circle
+        try {
+          // Check if image is already loaded or being loaded
+          if (!this.loadedImages) this.loadedImages = new Map();
+          
+          if (!this.loadedImages.has(user.profile.picture)) {
+            // Start loading the image
+            this.loadedImages.set(user.profile.picture, {
+              img: img,
+              loaded: false,
+              attempted: true
+            });
+            
+            img.onload = () => {
+              const imgData = this.loadedImages.get(user.profile.picture);
+              if (imgData) imgData.loaded = true;
+            };
+            
+            img.onerror = () => {
+              // Mark as failed to avoid repeated attempts
+              this.loadedImages.set(user.profile.picture, {
+                img: null,
+                loaded: false,
+                attempted: true
+              });
+            };
+            
+            // Draw fallback for now
+            ctx.fillStyle = userColor;
+            ctx.fill();
+          } else {
+            // Check if previously loaded successfully
+            const imgData = this.loadedImages.get(user.profile.picture);
+            if (imgData && imgData.loaded) {
+              ctx.drawImage(imgData.img, screenX - 15, screenY - 15, 30, 30);
+            } else {
+              // Use fallback
+              ctx.fillStyle = userColor;
+              ctx.fill();
+            }
+          }
+        } catch (e) {
+          ctx.fillStyle = userColor;
+          ctx.fill();
+        }
+        ctx.restore();
+      } else {
+        ctx.fillStyle = userColor;
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 15, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Generate display name
+      const displayName = user.profile?.name || this.getInitials(user.pubkey);
+      
+      // Draw name with better visibility
+      ctx.fillStyle = '#FFFFFF';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+      ctx.font = '12px "VT323", monospace';
+      ctx.textAlign = 'center';
+      ctx.strokeText(displayName, screenX, screenY - 20);
+      ctx.fillText(displayName, screenX, screenY - 20);
+      
+      // Draw speech indicator if talking
+      if (this.audio.isVoiceChatActive && this.audio.connections[user.pubkey]) {
+        ctx.fillStyle = '#8BAC0F';
+        ctx.beginPath();
+        ctx.arc(screenX, screenY - 30, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+    
+    // Draw the player
+    drawPlayer: function() {
+      if (!this.player) return;
+      
+      const screenX = canvas.width / 2;
+      const screenY = canvas.height / 2;
+      
+      // Draw avatar
+      if (this.player.profile && this.player.profile.picture) {
+        const img = new Image();
+        img.src = this.player.profile.picture;
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 15, 0, Math.PI * 2);
+        ctx.clip();
+        
+        // Try to draw image, fall back to colored circle
+        try {
+          // Check if image is already loaded
+          if (!this.loadedImages) this.loadedImages = new Map();
+          
+          if (!this.loadedImages.has(this.player.profile.picture)) {
+            // Start loading the image
+            this.loadedImages.set(this.player.profile.picture, {
+              img: img,
+              loaded: false,
+              attempted: true
+            });
+            
+            img.onload = () => {
+              const imgData = this.loadedImages.get(this.player.profile.picture);
+              if (imgData) imgData.loaded = true;
+            };
+            
+            img.onerror = () => {
+              // Mark as failed to avoid repeated attempts
+              this.loadedImages.set(this.player.profile.picture, {
+                img: null,
+                loaded: false,
+                attempted: true
+              });
+            };
+            
+            // Draw fallback for now
+            ctx.fillStyle = '#8BAC0F';
+            ctx.fill();
+          } else {
+            // Check if previously loaded successfully
+            const imgData = this.loadedImages.get(this.player.profile.picture);
+            if (imgData && imgData.loaded) {
+              ctx.drawImage(imgData.img, screenX - 15, screenY - 15, 30, 30);
+            } else {
+              // Use fallback
+              ctx.fillStyle = '#8BAC0F';
+              ctx.fill();
+            }
+          }
+        } catch (e) {
+          ctx.fillStyle = '#8BAC0F';
+          ctx.fill();
+        }
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#8BAC0F';
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 15, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Draw name
+      ctx.fillStyle = '#FFFFFF';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+      ctx.font = '12px "VT323", monospace';
+      ctx.textAlign = 'center';
+      ctx.strokeText(this.player.profile?.name || this.player.pubkey.substring(0, 8), screenX, screenY - 20);
+      ctx.fillText(this.player.profile?.name || this.player.pubkey.substring(0, 8), screenX, screenY - 20);
+    },
+    
+    // Draw voice chat range
+    drawVoiceRange: function() {
+      if (!this.audio.isVoiceChatActive) return;
+      
+      ctx.strokeStyle = 'rgba(139, 172, 15, 0.2)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.arc(canvas.width / 2, canvas.height / 2, VOICE_RANGE, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    },
+    
+    // Update mini-map
+    updateMiniMap: function() {
+      if (!this.player) return;
+      
+      const miniMapCanvas = document.getElementById('mini-map').querySelector('canvas');
+      const miniMapCtx = miniMapCanvas.getContext('2d');
+      
+      // Clear mini-map
+      miniMapCtx.clearRect(0, 0, 150, 150);
+      
+      // Draw background
+      miniMapCtx.fillStyle = 'rgba(30, 30, 30, 0.8)';
+      miniMapCtx.fillRect(0, 0, 150, 150);
+      
+      // Calculate scale
+      const scale = 150 / WORLD_SIZE;
+      
+      // Draw items
+      miniMapCtx.fillStyle = '#FFD700';
+      for (const item of this.items) {
+        miniMapCtx.beginPath();
+        miniMapCtx.arc(item.x * scale, item.y * scale, 2, 0, Math.PI * 2);
+        miniMapCtx.fill();
+      }
+      
+      // Draw treasures
+      miniMapCtx.fillStyle = '#FF8C00';
+      for (const treasure of this.treasures) {
+        miniMapCtx.beginPath();
+        miniMapCtx.arc(treasure.x * scale, treasure.y * scale, 3, 0, Math.PI * 2);
+        miniMapCtx.fill();
+      }
+      
+      // Draw special locations
+      for (const location of this.specialLocations || []) {
+        miniMapCtx.fillStyle = location.color;
+        miniMapCtx.beginPath();
+        miniMapCtx.arc(location.x * scale, location.y * scale, location.radius * scale / 2, 0, Math.PI * 2);
+        miniMapCtx.fill();
+      }
+      
+      // Draw other players
+      miniMapCtx.fillStyle = '#FFFFFF';
+      for (const [_, user] of this.users) {
+        miniMapCtx.beginPath();
+        miniMapCtx.arc(user.x * scale, user.y * scale, 2, 0, Math.PI * 2);
+        miniMapCtx.fill();
+      }
+      
+      // Draw player
+      miniMapCtx.fillStyle = '#8BAC0F';
+      miniMapCtx.beginPath();
+      miniMapCtx.arc(this.player.x * scale, this.player.y * scale, 3, 0, Math.PI * 2);
+      miniMapCtx.fill();
+      
+      // Draw voice range if active
+      if (this.audio.isVoiceChatActive) {
+        miniMapCtx.strokeStyle = 'rgba(139, 172, 15, 0.5)';
+        miniMapCtx.beginPath();
+        miniMapCtx.arc(this.player.x * scale, this.player.y * scale, VOICE_RANGE * scale, 0, Math.PI * 2);
+        miniMapCtx.stroke();
+      }
+    },
+    
+    // Check for collectible pickup
+    checkCollectibles: function() {
+      for (let i = 0; i < this.items.length; i++) {
+        const item = this.items[i];
+        const distance = Math.sqrt(
+          Math.pow(this.player.x - item.x, 2) + 
+          Math.pow(this.player.y - item.y, 2)
+        );
+        
+        if (distance < 30) {
+          // Add to inventory
+          this.player.inventory.push(item);
+          
+          // Update score
+          this.player.score += item.value;
+          this.updateScoreDisplay();
+          
+          // Remove from world
+          this.items.splice(i, 1);
+          i--;
+          
+          // Create effect
+          this.createCollectEffect(item.x, item.y);
+          
+          // Show toast
+          this.showToast(`Found ${item.emoji}! +${item.value} points`, "success");
+          
+          // Publish updated stats
+          this.publishPlayerStats();
+          
+          // Save score to storage
+          this.savePlayerScoreToStorage();
+          
+          break;
+        }
+      }
+    },
+    
+    // Create collection effect
+    createCollectEffect: function(x, y) {
+      // Calculate screen position
+      const screenX = x - this.camera.x + canvas.width / 2;
+      const screenY = y - this.camera.y + canvas.height / 2;
+      
+      // Create effect element
+      const effect = document.createElement('div');
+      effect.className = 'collect-effect';
+      effect.style.position = 'absolute';
+      effect.style.left = `${screenX - 20}px`;
+      effect.style.top = `${screenY - 20}px`;
+      effect.style.width = '40px';
+      effect.style.height = '40px';
+      document.body.appendChild(effect);
+      
+      // Remove after animation
+      setTimeout(() => effect.remove(), 500);
+    },
+    
+    // Update special locations
+    updateSpecialLocations: function() {
+      if (!this.specialLocations || !this.player) return;
+      
+      for (const location of this.specialLocations) {
+        // Check if player is in location
+        const distance = Math.sqrt(
+          Math.pow(this.player.x - location.x, 2) + 
+          Math.pow(this.player.y - location.y, 2)
+        );
+        
+        if (distance < location.radius) {
+          // Add player to visitors if not already there
+          if (location.visitors && !location.visitors.has(this.player.pubkey)) {
+            location.visitors.add(this.player.pubkey);
+            
+            // Show notification
+            this.showToast(`Entered ${location.name}`, "info");
+          }
+        } else {
+          // Remove player from visitors
+          if (location.visitors && location.visitors.has(this.player.pubkey)) {
+            location.visitors.delete(this.player.pubkey);
+            
+            // Show notification
+            this.showToast(`Left ${location.name}`, "info");
+            
+            // Close location interface if open
+            if (location.id === "cinema" && document.getElementById('cinema-interface').style.display === 'block') {
+              document.getElementById('cinema-interface').style.display = 'none';
+            } else if (location.id === "market" && document.getElementById('market-interface').style.display === 'block') {
+              document.getElementById('market-interface').style.display = 'none';
+            } else if (location.id === "cafe" && document.getElementById('cafe-interface').style.display === 'block') {
+              document.getElementById('cafe-interface').style.display = 'none';
+            }
+          }
+        }
+      }
+    },
+    
+    // Handle interaction with special locations
+    handleSpecialLocationInteraction: function(location) {
+      if (location.id === "cinema") {
+        this.showCinemaInterface(location);
+      } else if (location.id === "market") {
+        this.showMarketInterface(location);
+      } else if (location.id === "cafe") {
+        this.showCafeInterface(location);
+      }
+    },
+    
+    // Show cinema interface
+    showCinemaInterface: function(cinema) {
+      // Update current visitors
+      if (cinema.visitors && this.player) {
+        cinema.visitors.add(this.player.pubkey);
+      }
+      
+      // Display cinema interface
+      const cinemaInterface = document.getElementById('cinema-interface');
+      cinemaInterface.style.display = 'block';
+      
+      // Display current content if any
+      this.updateCinemaDisplay(cinema);
+      
+      // Clear and load chat messages
+      const messagesContainer = document.getElementById('cinema-messages');
+      messagesContainer.innerHTML = '';
+      
+      // Load recent cinema chat messages
+      if (this.gameRelay) {
+        const chatSub = this.gameRelay.sub([{ 
+          kinds: [420012], 
+          "#t": ["cinema-chat"],
+          limit: 20 
+        }]);
+        
+        chatSub.on('event', event => {
+          const user = this.users.get(event.pubkey) || 
+            (event.pubkey === this.player?.pubkey ? { profile: this.player.profile } : null);
+          
+          const name = user?.profile?.name || event.pubkey.substring(0, 8);
+          this.addCinemaChatMessage(name, event.content, event.pubkey === this.player?.pubkey, event.pubkey);
+        });
+      }
+    },
+    
+    // Update the cinema display with current media
+    updateCinemaDisplay: function(cinema) {
+      const screen = document.getElementById('cinema-screen');
+      if (!screen) return;
+      
+      if (cinema.currentMedia) {
+        // Detect type of media
+        if (this.isVideoURL(cinema.currentMedia)) {
+          screen.innerHTML = `<iframe width="100%" height="240" src="${this.getEmbedURL(cinema.currentMedia)}" frameborder="0" allowfullscreen></iframe>`;
+        } else if (this.isImageURL(cinema.currentMedia)) {
+          screen.innerHTML = `<img src="${cinema.currentMedia}" alt="Cinema content" style="max-width:100%; max-height:240px;">`;
+        } else {
+          // Unknown format, show as link
+          screen.innerHTML = `<div class="media-link"><a href="${cinema.currentMedia}" target="_blank">View Media Link</a></div>`;
+        }
+      } else {
+        screen.innerHTML = '<div class="no-media">No media currently playing. Submit something!</div>';
+      }
+    },
+    
+    // Check if URL is a video
+    isVideoURL: function(url) {
+      return url.match(/youtube\.com|youtu\.be|vimeo\.com|twitch\.tv/i);
+    },
+    
+    // Check if URL is an image
+    isImageURL: function(url) {
+      return url.match(/\.(jpeg|jpg|gif|png)$/i);
+    },
+    
+    // Convert YouTube URL to embed URL
+    getEmbedURL: function(url) {
+      // YouTube
+      const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+      const match = url.match(youtubeRegex);
+      
+      if (match && match[1]) {
+        return `https://www.youtube.com/embed/${match[1]}`;
+      }
+      
+      // For other platforms, return as is
+      return url;
+    },
+    
+    // Submit new content to the cinema
+    submitCinemaContent: function(url) {
+      if (!this.player || !this.gameRelay) return;
+      
+      const event = {
+        kind: 420011, // Custom kind for cinema content
+        content: JSON.stringify({
+          url: url,
+          type: this.isVideoURL(url) ? 'video' : this.isImageURL(url) ? 'image' : 'link'
+        }),
+        tags: [["t", "cinema"], ["location", "cinema"]],
+        created_at: Math.floor(Date.now() / 1000),
+        pubkey: this.player.pubkey
+      };
+      
+      this.signAndPublish(event, this.gameRelay)
+        .then(signedEvent => {
+          if (signedEvent) {
+            // Update local cinema
+            const cinema = this.specialLocations?.find(loc => loc.id === "cinema");
+            if (cinema) {
+              cinema.currentMedia = url;
+              this.updateCinemaDisplay(cinema);
+            }
+            
+            // Clear input
+            document.getElementById('cinema-url').value = '';
+            
+            // Show success message
+            this.showToast("Media submitted to the cinema!", "success");
+          }
+        })
+        .catch(error => {
+          console.error("Failed to submit cinema content:", error);
+          this.showToast("Failed to submit content", "error");
+        });
+    },
+    
+    // Send a message in the cinema chat
+    sendCinemaMessage: function() {
+      if (!this.player || !this.gameRelay) return;
+      
+      const input = document.getElementById('cinema-input');
+      const message = input.value.trim();
+      if (!message) return;
+      
+      const event = {
+        kind: 420012, // Custom kind for cinema chat
+        content: message,
+        tags: [["t", "cinema-chat"], ["location", "cinema"]],
+        created_at: Math.floor(Date.now() / 1000),
+        pubkey: this.player.pubkey
+      };
+      
+      this.signAndPublish(event, this.gameRelay)
+        .then(signedEvent => {
+          if (signedEvent) {
+            input.value = '';
+            // Add to chat display
+            const name = this.player.profile?.name || this.player.pubkey.substring(0, 8);
+            this.addCinemaChatMessage(name, message, true, this.player.pubkey);
+          }
+        })
+        .catch(error => {
+          console.error("Failed to send cinema message:", error);
+          this.showToast("Failed to send message", "error");
+        });
+    },
+    
+    // Add message to cinema chat display
+    addCinemaChatMessage: function(username, message, isFromMe = false, pubkey = null) {
+      const chatMessages = document.getElementById('cinema-messages');
+      if (!chatMessages) return;
+      
+      const messageEl = document.createElement('div');
+      messageEl.className = isFromMe ? 'chat-message from-me' : 'chat-message';
+      
+      // Store pubkey for interaction
+      if (pubkey) {
+        messageEl.dataset.pubkey = pubkey;
+        messageEl.addEventListener('click', () => {
+          this.showUserPopup(pubkey);
+        });
+        messageEl.style.cursor = 'pointer';
+      }
+      
+      const usernameSpan = document.createElement('span');
+      usernameSpan.className = 'username';
+      usernameSpan.textContent = username;
+      
+      const contentSpan = document.createElement('span');
+      contentSpan.className = 'content';
+      
+      // Process message content for media and links
+      contentSpan.innerHTML = this.formatMessageContent(message);
+      
+      messageEl.appendChild(usernameSpan);
+      messageEl.appendChild(document.createTextNode(': '));
+      messageEl.appendChild(contentSpan);
+      
+      chatMessages.appendChild(messageEl);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    },
+    
+    // Show market interface
+    showMarketInterface: function(market) {
+      // Display market interface
+      const marketInterface = document.getElementById('market-interface');
+      marketInterface.style.display = 'block';
+      
+      // Clear and load market listings
+      const marketItemsContainer = document.getElementById('market-items');
+      marketItemsContainer.innerHTML = '';
+      
+      // Load recent market listings
+      if (this.gameRelay) {
+        const listingsSub = this.gameRelay.sub([{ 
+          kinds: [420020], 
+          "#t": ["market"],
+          limit: 20 
+        }]);
+        
+        listingsSub.on('event', event => {
+          try {
+            const listing = JSON.parse(event.content);
+            
+            const itemEl = document.createElement('div');
+            itemEl.className = 'market-item';
+            itemEl.innerHTML = `
+              <div class="market-item-name">${listing.name}</div>
+              <div class="market-item-price">${listing.price} sats</div>
+              <button class="market-buy-button" data-id="${event.id}">Buy</button>
+            `;
+            
+            itemEl.querySelector('.market-buy-button').addEventListener('click', () => {
+              this.buyMarketItem(event.id, listing, event.pubkey);
+            });
+            
+            marketItemsContainer.appendChild(itemEl);
+          } catch (error) {
+            console.error("Error processing market listing:", error);
+          }
+        });
+      }
+    },
+    
+    // List an item on the market
+listMarketItem: function() {
+  if (!this.player || !this.gameRelay) return;
+  
+  const nameInput = document.getElementById('market-item-name');
+  const priceInput = document.getElementById('market-item-price');
+  
+  const name = nameInput.value.trim();
+  const price = parseInt(priceInput.value);
+  
+  if (!name) {
+    this.showToast("Please enter an item name", "error");
+    return;
+  }
+  
+  if (isNaN(price) || price <= 0) {
+    this.showToast("Please enter a valid price", "error");
+    return;
+  }
+  
+  const event = {
+    kind: 420020, // Custom kind for market listing
+    content: JSON.stringify({
+      name: name,
+      price: price,
+      description: "Listed on Relay World Market"
+    }),
+    tags: [["t", "market"], ["location", "market"]],
+    created_at: Math.floor(Date.now() / 1000),
+    pubkey: this.player.pubkey
+  };
+  
+  this.signAndPublish(event, this.gameRelay)
+    .then(signedEvent => {
+      if (signedEvent) {
+        // Clear inputs
+        nameInput.value = '';
+        priceInput.value = '';
+        
+        // Show success message
+        this.showToast("Item listed on the market!", "success");
+        
+        // Add to market items display
+        const marketItemsContainer = document.getElementById('market-items');
+        if (marketItemsContainer) {
+          const itemEl = document.createElement('div');
+          itemEl.className = 'market-item';
+          itemEl.innerHTML = `
+            <div class="market-item-name">${name}</div>
+            <div class="market-item-price">${price} sats</div>
+            <button class="market-buy-button" data-id="${signedEvent.id}">Buy</button>
+          `;
+          
+          itemEl.querySelector('.market-buy-button').addEventListener('click', () => {
+            this.buyMarketItem(signedEvent.id, { name, price }, this.player.pubkey);
+          });
+          
+          marketItemsContainer.appendChild(itemEl);
+        }
+      }
+    })
+    .catch(error => {
+      console.error("Failed to list market item:", error);
+      this.showToast("Failed to list item", "error");
+    });
+},
+
+// Buy an item from the market
+buyMarketItem: function(id, listing, sellerPubkey) {
+  if (!this.player) return;
+  
+  // Check if it's player's own listing
+  if (sellerPubkey === this.player.pubkey) {
+    this.showToast("You can't buy your own item", "warning");
+    return;
+  }
+  
+  // Simulate purchase with zaps
+  const confirmPurchase = confirm(`Buy ${listing.name} for ${listing.price} sats?`);
+  if (!confirmPurchase) return;
+  
+  // Show zap interface for the seller
+  const user = this.users.get(sellerPubkey);
+  if (user) {
+    // Set up zap target
+    document.getElementById('zap-interface').dataset.targetPubkey = sellerPubkey;
+    document.getElementById('zap-target-image').src = user.profile?.picture || '';
+    document.getElementById('zap-target-name').textContent = user.profile?.name || sellerPubkey.substring(0, 8);
+    document.getElementById('zap-amount').value = listing.price;
+    document.getElementById('zap-message').value = `Payment for ${listing.name}`;
+    
+    // Show zap interface
+    document.getElementById('zap-interface').style.display = 'block';
+  } else {
+    this.showToast("Seller information not available", "error");
+  }
+},
+
+// Show cafe interface
+showCafeInterface: function(cafe) {
+  // Update visitors
+  if (cafe.visitors && this.player) {
+    cafe.visitors.add(this.player.pubkey);
+  }
+  
+  // Display cafe interface
+  const cafeInterface = document.getElementById('cafe-interface');
+  cafeInterface.style.display = 'block';
+  
+  // Update visitor list
+  this.updateCafeVisitors(cafe);
+  
+  // Clear and load chat messages
+  const messagesContainer = document.getElementById('cafe-messages');
+  messagesContainer.innerHTML = '';
+  
+  // Load recent cafe chat messages
+  if (this.gameRelay) {
+    const chatSub = this.gameRelay.sub([{ 
+      kinds: [420030], 
+      "#t": ["cafe-chat"],
+      limit: 20 
+    }]);
+    
+    chatSub.on('event', event => {
+      const user = this.users.get(event.pubkey) || 
+        (event.pubkey === this.player?.pubkey ? { profile: this.player.profile } : null);
+      
+      const name = user?.profile?.name || event.pubkey.substring(0, 8);
+      this.addCafeChatMessage(name, event.content, event.pubkey === this.player?.pubkey, event.pubkey);
+    });
+  }
+},
+
+// Update cafe visitors list
+updateCafeVisitors: function(cafe) {
+  const visitorsList = document.getElementById('cafe-user-list');
+  if (!visitorsList) return;
+  
+  visitorsList.innerHTML = '';
+  
+  // Add all visitors
+  if (cafe.visitors) {
+    for (const pubkey of cafe.visitors) {
+      const user = this.users.get(pubkey) || 
+        (pubkey === this.player?.pubkey ? { profile: this.player.profile, pubkey } : { pubkey });
+      
+      const userEl = document.createElement('div');
+      userEl.className = 'cafe-user';
+      userEl.dataset.pubkey = pubkey;
+      
+      let avatar;
+      if (user.profile && user.profile.picture) {
+        avatar = `<img src="${user.profile.picture}" class="cafe-user-avatar" alt="User">`;
+      } else {
+        // Create colored circle with initials
+        const color = this.getUserColor(pubkey);
+        const initials = this.getInitials(pubkey);
+        avatar = `<div class="cafe-user-avatar" style="background-color: ${color}; display: flex; justify-content: center; align-items: center; color: white;">${initials}</div>`;
+      }
+      
+      userEl.innerHTML = `
+        ${avatar}
+        <div class="cafe-user-name">${user.profile?.name || pubkey.substring(0, 8)}</div>
+      `;
+      
+      userEl.addEventListener('click', () => {
+        this.showUserPopup(pubkey);
+      });
+      
+      visitorsList.appendChild(userEl);
+    }
+  }
+  
+  // If no visitors
+  if (visitorsList.children.length === 0) {
+    visitorsList.innerHTML = '<div class="no-visitors">No visitors in the cafe</div>';
+  }
+},
+
+// Send a message in the cafe chat
+sendCafeMessage: function() {
+  if (!this.player || !this.gameRelay) return;
+  
+  const input = document.getElementById('cafe-input');
+  const message = input.value.trim();
+  if (!message) return;
+  
+  const event = {
+    kind: 420030, // Custom kind for cafe chat
+    content: message,
+    tags: [["t", "cafe-chat"], ["location", "cafe"]],
+    created_at: Math.floor(Date.now() / 1000),
+    pubkey: this.player.pubkey
+  };
+  
+  this.signAndPublish(event, this.gameRelay)
+    .then(signedEvent => {
+      if (signedEvent) {
+        input.value = '';
+        // Add to chat display
+        const name = this.player.profile?.name || this.player.pubkey.substring(0, 8);
+        this.addCafeChatMessage(name, message, true, this.player.pubkey);
+      }
+    })
+    .catch(error => {
+      console.error("Failed to send cafe message:", error);
+      this.showToast("Failed to send message", "error");
+    });
+},
+
+// Add message to cafe chat display
+addCafeChatMessage: function(username, message, isFromMe = false, pubkey = null) {
+  const chatMessages = document.getElementById('cafe-messages');
+  if (!chatMessages) return;
+  
+  const messageEl = document.createElement('div');
+  messageEl.className = isFromMe ? 'chat-message from-me' : 'chat-message';
+  
+  // Store pubkey for interaction
+  if (pubkey) {
+    messageEl.dataset.pubkey = pubkey;
+    messageEl.addEventListener('click', () => {
+      this.showUserPopup(pubkey);
+    });
+    messageEl.style.cursor = 'pointer';
+  }
+  
+  const usernameSpan = document.createElement('span');
+  usernameSpan.className = 'username';
+  usernameSpan.textContent = username;
+  
+  const contentSpan = document.createElement('span');
+  contentSpan.className = 'content';
+  
+  // Process message content for media and links
+  contentSpan.innerHTML = this.formatMessageContent(message);
+  
+  messageEl.appendChild(usernameSpan);
+  messageEl.appendChild(document.createTextNode(': '));
+  messageEl.appendChild(contentSpan);
+  
+  chatMessages.appendChild(messageEl);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+},
+
+// Publish player position
+publishPlayerPosition: (function() {
+  let lastPublish = 0;
+  const PUBLISH_INTERVAL = 200; // 5x per second
+  
+  return function() {
+    if (!this.player || !this.gameRelay) return;
+    
+    const now = Date.now();
+    if (now - lastPublish < PUBLISH_INTERVAL) return;
+    lastPublish = now;
+    
+    const event = {
+      kind: 420001,
+      content: JSON.stringify({ x: this.player.x, y: this.player.y }),
+      tags: [["t", "position"]],
+      created_at: Math.floor(now / 1000),
+      pubkey: this.player.pubkey
+    };
+    
+    this.signAndPublish(event, this.gameRelay);
+  };
+})(),
+
+// Publish player stats
+publishPlayerStats: function() {
+  if (!this.player || !this.gameRelay) return;
+  
+  const event = {
+    kind: 420002,
+    content: JSON.stringify({
+      score: this.player.score,
+      itemsCollected: this.player.inventory.length
+    }),
+    tags: [["t", "stats"]],
+    created_at: Math.floor(Date.now() / 1000),
+    pubkey: this.player.pubkey
+  };
+  
+  this.signAndPublish(event, this.gameRelay);
+},
+
+// Sign and publish an event
+signAndPublish: async function(event, relay) {
+  if (!relay) {
+    console.error('Cannot publish to null relay');
+    return null;
+  }
+  
+  try {
+    const signedEvent = await window.nostr.signEvent(event);
+    relay.publish(signedEvent);
+    return signedEvent;
+  } catch (error) {
+    console.error('Failed to sign and publish event:', error);
+    return null;
+  }
+},
+
+// Send chat message
+sendChatMessage: function() {
+  if (!this.player || !this.gameRelay) {
+    this.showToast("Cannot send message - not connected to game relay", "error");
+    return;
+  }
+  
+  const input = document.getElementById('chat-input');
+  const message = input.value.trim();
+  if (!message) return;
+  
+  // Determine kind and tags based on chat mode
+  let kind, tags;
+  if (this.chatMode === 'game') {
+    kind = 420010; // Game-specific chat
+    tags = [["t", "game-chat"]];
+  } else {
+    kind = 1; // Regular note
+    tags = [["t", "chat"]];
+  }
+  
+  const event = {
+    kind: kind,
+    content: message,
+    tags: tags,
+    created_at: Math.floor(Date.now() / 1000),
+    pubkey: this.player.pubkey
+  };
+  
+  this.signAndPublish(event, this.gameRelay)
+    .then(signedEvent => {
+      if (signedEvent) {
+        input.value = '';
+        // Add to chat display
+        const name = this.player.profile?.name || this.player.pubkey.substring(0, 8);
+        if (this.chatMode === 'game') {
+          this.addChatMessage(name, message, true, this.player.pubkey);
+        } else {
+          this.addGlobalMessage(name, message, true, this.player.pubkey);
+        }
+      }
+    })
+    .catch(error => {
+      console.error("Failed to send chat message:", error);
+      this.showToast("Failed to send message", "error");
+    });
+},
+
+// Add message to game chat display
+addChatMessage: function(username, message, isFromMe = false, pubkey = null) {
+  const chatMessages = document.getElementById('chat-messages');
+  
+  const messageEl = document.createElement('div');
+  messageEl.className = isFromMe ? 'chat-message from-me' : 'chat-message';
+  
+  // Store pubkey for interaction
+  if (pubkey) {
+    messageEl.dataset.pubkey = pubkey;
+    messageEl.addEventListener('click', () => {
+      this.showUserPopup(pubkey);
+    });
+    messageEl.style.cursor = 'pointer';
+  }
+  
+  const usernameSpan = document.createElement('span');
+  usernameSpan.className = 'username';
+  usernameSpan.textContent = username;
+  
+  const contentSpan = document.createElement('span');
+  contentSpan.className = 'content';
+  
+  // Process message content for media and links
+  contentSpan.innerHTML = this.formatMessageContent(message);
+  
+  messageEl.appendChild(usernameSpan);
+  messageEl.appendChild(document.createTextNode(': '));
+  messageEl.appendChild(contentSpan);
+  
+  chatMessages.appendChild(messageEl);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+},
+
+// Add message to global chat display
+addGlobalMessage: function(username, message, isFromMe = false, pubkey = null) {
+  const globalMessages = document.getElementById('global-messages');
+  
+  const messageEl = document.createElement('div');
+  messageEl.className = isFromMe ? 'chat-message from-me' : 'chat-message';
+  
+  // Store pubkey for interaction
+  if (pubkey) {
+    messageEl.dataset.pubkey = pubkey;
+    messageEl.dataset.content = message; // Store content for note detail view
+    messageEl.addEventListener('click', () => {
+      this.showNoteDetail(pubkey, message);
+    });
+    messageEl.style.cursor = 'pointer';
+  }
+  
+  const usernameSpan = document.createElement('span');
+  usernameSpan.className = 'username';
+  usernameSpan.textContent = username;
+  
+  const contentSpan = document.createElement('span');
+  contentSpan.className = 'content';
+  
+  // Process message content for media and links
+  contentSpan.innerHTML = this.formatMessageContent(message);
+  
+  messageEl.appendChild(usernameSpan);
+  messageEl.appendChild(document.createTextNode(': '));
+  messageEl.appendChild(contentSpan);
+  
+  globalMessages.appendChild(messageEl);
+  globalMessages.scrollTop = globalMessages.scrollHeight;
+},
+
+// Format message content with media previews
+formatMessageContent: function(content) {
+  // Process URLs
+  let formattedContent = content.replace(
+    /(https?:\/\/[^\s]+)/g, 
+    (url) => {
+      // Check for image URLs
+      if (url.match(/\.(jpeg|jpg|gif|png)$/i)) {
+        return `<a href="${url}" target="_blank"><img src="${url}" class="chat-image" alt="Image"></a>`;
+      }
+      // Check for YouTube
+      const youtubeMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+      if (youtubeMatch) {
+        return `<a href="${url}" target="_blank">🎬 YouTube Video</a>`;
+      }
+      // Regular link
+      return `<a href="${url}" target="_blank">${url}</a>`;
+    }
+  );
+  
+  return formattedContent;
+},
+
+// Show note detail popup
+showNoteDetail: function(pubkey, content) {
+  const popup = document.getElementById('note-detail-popup');
+  popup.dataset.pubkey = pubkey;
+  
+  // Get user info
+  const user = this.users.get(pubkey) || 
+    (pubkey === this.player?.pubkey ? { profile: this.player.profile, pubkey } : { pubkey });
+  
+  // Update author info
+  const authorInfo = document.getElementById('note-author-info');
+  
+  let avatar;
+  if (user.profile && user.profile.picture) {
+    avatar = `<img id="note-author-avatar" src="${user.profile.picture}" alt="Author">`;
+  } else {
+    // Create colored circle with initials
+    const color = this.getUserColor(pubkey);
+    const initials = this.getInitials(pubkey);
+    avatar = `<div id="note-author-avatar" style="background-color: ${color}; display: flex; justify-content: center; align-items: center; color: white;">${initials}</div>`;
+  }
+  
+  authorInfo.innerHTML = `
+    ${avatar}
+    <div>
+      <div id="note-author-name">${user.profile?.name || pubkey.substring(0, 8)}</div>
+      <div id="note-author-npub">${pubkey.substring(0, 8)}...</div>
+    </div>
+  `;
+  
+  // Update content
+  document.getElementById('note-content').innerHTML = this.formatMessageContent(content);
+  
+  // Clear replies
+  document.getElementById('note-replies').innerHTML = '';
+  
+  // Show popup
+  popup.style.display = 'block';
+  
+  // Load replies if on an explorer relay
+  if (this.activeExplorerRelay) {
+    const relay = this.explorerRelays.get(this.activeExplorerRelay);
+    if (relay) {
+      // We'd need an event ID to properly get replies, but in this demo we'll just
+      // show some placeholder replies
+      document.getElementById('note-replies').innerHTML = '<div class="reply"><b>Feature preview:</b> In the full implementation, this would show replies to this note from the relay.</div>';
+    }
+  }
+},
+
+// Reply to note
+replyToNote: function() {
+  const popup = document.getElementById('note-detail-popup');
+  const pubkey = popup.dataset.pubkey;
+  if (!pubkey || !this.player || !this.gameRelay) return;
+  
+  const replyContent = prompt("Enter your reply:");
+  if (!replyContent || replyContent.trim() === '') return;
+  
+  // In a real implementation, we'd use the e-tag to properly thread replies
+  // For demo purposes, we'll just post a new note with a mention
+  
+  const event = {
+    kind: 1,
+    content: replyContent,
+    tags: [["t", "chat"], ["p", pubkey]],
+    created_at: Math.floor(Date.now() / 1000),
+    pubkey: this.player.pubkey
+  };
+  
+  this.signAndPublish(event, this.gameRelay)
+    .then(signedEvent => {
+      if (signedEvent) {
+        this.showToast("Reply sent!", "success");
+        
+        // Add to replies display
+        const repliesContainer = document.getElementById('note-replies');
+        
+        const replyEl = document.createElement('div');
+        replyEl.className = 'reply';
+        
+        // Create profile info
+        const name = this.player.profile?.name || this.player.pubkey.substring(0, 8);
+        
+        const usernameSpan = document.createElement('span');
+        usernameSpan.className = 'username';
+        usernameSpan.textContent = name;
+        
+        const contentSpan = document.createElement('span');
+        contentSpan.className = 'content';
+        contentSpan.innerHTML = this.formatMessageContent(replyContent);
+        
+        replyEl.appendChild(usernameSpan);
+        replyEl.appendChild(document.createTextNode(': '));
+        replyEl.appendChild(contentSpan);
+        
+        repliesContainer.appendChild(replyEl);
+      }
+    })
+    .catch(error => {
+      console.error("Failed to send reply:", error);
+      this.showToast("Failed to send reply", "error");
+    });
+},
+
+// Zap a note
+zapNote: function() {
+  const popup = document.getElementById('note-detail-popup');
+  const pubkey = popup.dataset.pubkey;
+  if (!pubkey) return;
+  
+  // Show zap interface
+  document.getElementById('note-detail-popup').style.display = 'none';
+  
+  this.triggerZap(pubkey);
+},
+
+// Show user popup
+showUserPopup: function(pubkey) {
+  const user = this.users.get(pubkey);
+  if (!user) return;
+  
+  const popup = document.getElementById('user-popup');
+  popup.dataset.pubkey = pubkey;
+  
+  document.getElementById('user-popup-image').src = user.profile?.picture || '';
+  document.getElementById('user-popup-name').textContent = user.profile?.name || pubkey.substring(0, 8);
+  document.getElementById('user-popup-npub').textContent = pubkey.substring(0, 8) + '...';
+  
+  // Update follow button
+  const followButton = document.getElementById('follow-button');
+  followButton.textContent = this.player?.following?.has(pubkey) ? 'Unfollow' : 'Follow';
+  
+  // Update notes
+  const notesContainer = document.getElementById('user-notes');
+  notesContainer.innerHTML = '';
+  
+  if (user.notes && user.notes.length > 0) {
+    for (let i = 0; i < Math.min(user.notes.length, 5); i++) {
+      const note = user.notes[i];
+      
+      const noteEl = document.createElement('div');
+      noteEl.className = 'user-note';
+      noteEl.textContent = note.content;
+      
+      notesContainer.appendChild(noteEl);
+    }
+  } else {
+    notesContainer.innerHTML = '<div class="no-notes">No notes found</div>';
+  }
+  
+  popup.style.display = 'block';
+},
+
+// Hide user popup
+hideUserPopup: function() {
+  document.getElementById('user-popup').style.display = 'none';
+},
+
+// Toggle follow user
+toggleFollowUser: async function() {
+  const popup = document.getElementById('user-popup');
+  const pubkey = popup.dataset.pubkey;
+  if (!pubkey || !this.player || !this.loginRelay) return;
+  
+  // Check if already following
+  const isFollowing = this.player.following.has(pubkey);
+  
+  if (isFollowing) {
+    // Remove from following set
+    this.player.following.delete(pubkey);
+  } else {
+    // Add to following set
+    this.player.following.add(pubkey);
+  }
+  
+  // Update follow button
+  document.getElementById('follow-button').textContent = isFollowing ? 'Follow' : 'Unfollow';
+  
+  // Create tags array with all follows
+  const tags = Array.from(this.player.following).map(pk => ['p', pk]);
+  
+  // Create follow event
+  const event = {
+    kind: 3,
+    content: "",
+    tags: tags,
+    created_at: Math.floor(Date.now() / 1000),
+    pubkey: this.player.pubkey
+  };
+  
+  // Sign and publish to login relay
+  this.signAndPublish(event, this.loginRelay);
+  
+  // Show toast
+  this.showToast(isFollowing ? 'Unfollowed user' : 'Following user', isFollowing ? 'info' : 'success');
+},
+
+// Start direct chat with user
+startDirectChat: function() {
+  const popup = document.getElementById('user-popup');
+  const pubkey = popup.dataset.pubkey;
+  if (!pubkey) return;
+  
+  // For demo purposes, just show a message
+  this.showToast("Direct messaging is coming soon!", "info");
+},
+
+// Start direct voice chat with user
+startDirectVoiceChat: function() {
+  const popup = document.getElementById('user-popup');
+  const pubkey = popup.dataset.pubkey;
+  if (!pubkey) return;
+  
+  // For demo purposes, just show a message
+  this.showToast("Direct voice chat is coming soon!", "info");
+},
+
+// Toggle voice chat
+toggleVoiceChat: async function() {
+  if (this.audio.isVoiceChatActive) {
+    // Stop voice chat
+    this.stopVoiceChat();
+  } else {
+    // Start voice chat
+    await this.startVoiceChat();
+  }
+},
+
+// Start voice chat
+startVoiceChat: async function() {
+  try {
+    // Check if navigator.mediaDevices is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      this.showToast("Voice chat not supported in this browser", "error");
+      return;
+    }
+    
+    // Request microphone access
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true
+      },
+      video: false
+    });
+    
+    this.audio.localStream = stream;
+    
+    // Check if PeerJS is available
+    if (typeof Peer === 'undefined') {
+      this.showToast("PeerJS not loaded, voice chat unavailable", "error");
+      return;
+    }
+    
+    // Initialize PeerJS
+    this.audio.peer = new Peer(this.player.pubkey.substring(0, 12), {
+      debug: 0
+    });
+    
+    // Handle peer open
+    this.audio.peer.on('open', (id) => {
+      console.log('PeerJS connected with ID:', id);
+      
+      // Handle incoming calls
+      this.audio.peer.on('call', call => {
+        console.log('Incoming call from:', call.peer);
+        call.answer(this.audio.localStream);
+        
+        call.on('stream', remoteStream => {
+          console.log('Received remote stream');
+          // Create audio element for remote stream
+          const audio = document.createElement('audio');
+          audio.srcObject = remoteStream;
+          audio.autoplay = true;
+          document.body.appendChild(audio);
+          
+          // Store audio element with connection
+          const remotePubkey = call.peer;
+          if (!this.audio.connections[remotePubkey]) {
+            this.audio.connections[remotePubkey] = {};
+          }
+          this.audio.connections[remotePubkey].audio = audio;
+        });
+      });
+      
+      // Connect to nearby users
+      this.connectToNearbyUsers();
+      
+      // Update UI
+      this.audio.isVoiceChatActive = true;
+      document.getElementById('voice-icon').textContent = '🔊';
+      document.getElementById('voice-indicator').style.backgroundColor = '#10B981';
+      
+      // Show notification
+      this.showToast('Voice chat activated', 'success');
+    });
+    
+    // Handle peer errors
+    this.audio.peer.on('error', (error) => {
+      console.error('PeerJS error:', error);
+      this.showToast('Voice chat error: ' + error.type, 'error');
+    });
+    
+  } catch (error) {
+    console.error('Failed to start voice chat:', error);
+    this.showToast('Failed to start voice chat: ' + error.message, 'error');
+  }
+},
+
+// Stop voice chat
+stopVoiceChat: function() {
+  // Stop local stream
+  if (this.audio.localStream) {
+    this.audio.localStream.getTracks().forEach(track => track.stop());
+    this.audio.localStream = null;
+  }
+  
+  // Close peer connections
+  for (const pubkey in this.audio.connections) {
+    const conn = this.audio.connections[pubkey];
+    if (conn.call) conn.call.close();
+    if (conn.audio) conn.audio.remove();
+  }
+  
+  // Close peer
+  if (this.audio.peer) {
+    this.audio.peer.destroy();
+    this.audio.peer = null;
+  }
+  
+  // Clear connections
+  this.audio.connections = {};
+  
+  // Update UI
+  this.audio.isVoiceChatActive = false;
+  document.getElementById('voice-icon').textContent = '🎙️';
+  document.getElementById('voice-indicator').style.backgroundColor = '#555';
+  
+  // Show notification
+  this.showToast('Voice chat deactivated', 'info');
+},
+
+// Connect to nearby users
+connectToNearbyUsers: function() {
+  if (!this.audio.isVoiceChatActive || !this.audio.peer || !this.audio.peer.open) return;
+  
+  for (const [pubkey, user] of this.users) {
+    const distance = Math.sqrt(
+      Math.pow(this.player.x - user.x, 2) + 
+      Math.pow(this.player.y - user.y, 2)
+    );
+    
+    if (distance <= VOICE_RANGE && !this.audio.connections[pubkey]) {
+      // Create call
+      console.log('Calling peer:', pubkey.substring(0, 12));
+      try {
+        const call = this.audio.peer.call(pubkey.substring(0, 12), this.audio.localStream);
+        
+        // Handle stream
+        call.on('stream', remoteStream => {
+          console.log('Received remote stream from call');
+          // Create audio element
+          const audio = document.createElement('audio');
+          audio.srcObject = remoteStream;
+          audio.autoplay = true;
+          document.body.appendChild(audio);
+          
+          // Update connection
+          this.audio.connections[pubkey].audio = audio;
+        });
+        
+        // Store connection
+        this.audio.connections[pubkey] = { call, distance };
+      } catch (error) {
+        console.error('Failed to call peer:', error);
+      }
+    }
+  }
+},
+
+// Update voice connections
+updateVoiceConnections: function() {
+  if (!this.audio.isVoiceChatActive) return;
+  
+  // Check existing connections
+  for (const pubkey in this.audio.connections) {
+    const user = this.users.get(pubkey);
+    if (!user) continue;
+    
+    const distance = Math.sqrt(
+      Math.pow(this.player.x - user.x, 2) + 
+      Math.pow(this.player.y - user.y, 2)
+    );
+    
+    // Update distance
+    this.audio.connections[pubkey].distance = distance;
+    
+    // Update volume based on distance
+    if (this.audio.connections[pubkey].audio) {
+      // Linear falloff from 1.0 (close) to 0.0 (at range limit)
+      const volume = Math.max(0, 1.0 - (distance / VOICE_RANGE));
+      this.audio.connections[pubkey].audio.volume = volume;
+    }
+    
+    // Disconnect if out of range
+    if (distance > VOICE_RANGE) {
+      const conn = this.audio.connections[pubkey];
+      if (conn.call) conn.call.close();
+      if (conn.audio) conn.audio.remove();
+      delete this.audio.connections[pubkey];
+    }
+  }
+  
+  // Connect to new users in range
+  if (this.audio.peer && this.audio.peer.open) {
+    for (const [pubkey, user] of this.users) {
+      if (this.audio.connections[pubkey]) continue;
+      
+      const distance = Math.sqrt(
+        Math.pow(this.player.x - user.x, 2) + 
+        Math.pow(this.player.y - user.y, 2)
+      );
+      
+      if (distance <= VOICE_RANGE) {
+        // Create call
+        try {
+          const call = this.audio.peer.call(pubkey.substring(0, 12), this.audio.localStream);
+          
+          call.on('stream', remoteStream => {
+            // Create audio element
+            const audio = document.createElement('audio');
+            audio.srcObject = remoteStream;
+            audio.autoplay = true;
+            document.body.appendChild(audio);
+            
+            // Update connection
+            this.audio.connections[pubkey].audio = audio;
+          });
+          
+          // Store connection
+          this.audio.connections[pubkey] = { call, distance };
+        } catch (error) {
+          console.error('Failed to call new peer:', error);
+        }
+      }
+    }
+  }
+},
+
+// Trigger interaction with nearby entities
+triggerInteraction: function() {
+  if (!this.player) return;
+  
+  // Find closest user
+  let closestUser = null;
+  let minDistance = INTERACTION_RANGE;
+  
+  for (const [pubkey, user] of this.users) {
+    const distance = Math.sqrt(
+      Math.pow(this.player.x - user.x, 2) + 
+      Math.pow(this.player.y - user.y, 2)
+    );
+    
+    if (distance < minDistance) {
+      closestUser = pubkey;
+      minDistance = distance;
+    }
+  }
+  
+  if (closestUser) {
+    // Show user popup
+    this.showUserPopup(closestUser);
+    return;
+  }
+  
+  // Check for special locations
+  for (const location of this.specialLocations || []) {
+    const distance = Math.sqrt(
+      Math.pow(this.player.x - location.x, 2) + 
+      Math.pow(this.player.y - location.y, 2)
+    );
+    
+    if (distance < location.radius) {
+      this.handleSpecialLocationInteraction(location);
+      return;
+    }
+  }
+  
+  // Check for treasures
+  for (const treasure of this.treasures) {
+    const distance = Math.sqrt(
+      Math.pow(this.player.x - treasure.x, 2) + 
+      Math.pow(this.player.y - treasure.y, 2)
+    );
+    
+    if (distance < 50 && !treasure.unlocking) {
+      treasure.unlocking = true;
+      treasure.unlockStart = Date.now();
+      
+      // Set timeout to open after 3 seconds
+      setTimeout(() => {
+        if (!treasure.unlocking) return;
+        
+        // Add score
+        this.player.score += 500;
+        this.updateScoreDisplay();
+        
+        // Remove treasure
+        this.treasures = this.treasures.filter(t => t !== treasure);
+        
+        // Show notification
+        this.showToast('Treasure opened! +500 points', 'success');
+        
+        // Publish updated stats
+        this.publishPlayerStats();
+        
+        // Save score to storage
+        this.savePlayerScoreToStorage();
+      }, 3000);
+      
+      return;
+    }
+  }
+  
+  // Check for portals
+  for (const portal of this.portals) {
+    const distance = Math.sqrt(
+      Math.pow(this.player.x - portal.x, 2) + 
+      Math.pow(this.player.y - portal.y, 2)
+    );
+    
+    if (distance < 50) {
+      // Find other portal
+      const otherPortal = this.portals.find(p => p.id !== portal.id);
+      if (otherPortal) {
+        // Teleport
+        this.player.x = otherPortal.x;
+        this.player.y = otherPortal.y;
+        
+        // Update camera
+        this.camera.x = this.player.x;
+        this.camera.y = this.player.y;
+        
+        // Show notification
+        this.showToast(`Teleported to ${otherPortal.id}!`, 'success');
+        
+        // Publish position update
+        this.publishPlayerPosition();
+      }
+      return;
+    }
+  }
+},
+
+// Trigger zap interface
+triggerZap: function(targetPubkey) {
+  if (!targetPubkey) {
+    const popup = document.getElementById('user-popup');
+    targetPubkey = popup.dataset.pubkey;
+  }
+  
+  if (!targetPubkey) return;
+  
+  const user = this.users.get(targetPubkey);
+  if (!user) return;
+  
+  // Show zap interface
+  const zapInterface = document.getElementById('zap-interface');
+  zapInterface.dataset.targetPubkey = targetPubkey;
+  
+  document.getElementById('zap-target-image').src = user.profile?.picture || '';
+  document.getElementById('zap-target-name').textContent = user.profile?.name || targetPubkey.substring(0, 8);
+  
+  zapInterface.style.display = 'block';
+},
+
+// Send zap
+sendZap: async function() {
+  const zapInterface = document.getElementById('zap-interface');
+  const targetPubkey = zapInterface.dataset.targetPubkey;
+  
+  if (!targetPubkey) {
+    this.showToast('No zap target selected', 'error');
+    return;
+  }
+  
+  const user = this.users.get(targetPubkey);
+  if (!user || !user.profile || !user.profile.lud16) {
+    this.showToast('User does not have a lightning address', 'warning');
+    // Continue anyway for demo purposes
+  }
+  
+  const amount = parseInt(document.getElementById('zap-amount').value);
+  if (isNaN(amount) || amount <= 0) {
+    this.showToast('Invalid zap amount', 'error');
+    return;
+  }
+  
+  try {
+    // Check if BitcoinConnect is available
+    if (!window.BitcoinConnect) {
+      this.showToast("BitcoinConnect not loaded, simulating zap for demo", "warning");
+      
+      // Simulate for demo
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Hide zap interface
+      zapInterface.style.display = 'none';
+      
+      // Show success message
+      this.showToast(`Zapped ${user.profile?.name || targetPubkey.substring(0, 8)} ${amount} sats!`, 'success');
+      
+      // Update player stats (small score bonus for zapping)
+      this.player.score += Math.floor(amount / 50);
+      this.updateScoreDisplay();
+      this.publishPlayerStats();
+      
+      // Save score to storage
+      this.savePlayerScoreToStorage();
+      
+      return;
+    }
+    
+    // Show sending state
+    const sendButton = document.getElementById('zap-send-button');
+    const originalText = sendButton.textContent;
+    sendButton.innerHTML = '<span class="spinner"></span> Sending...';
+    sendButton.disabled = true;
+    
+    // Initialize Bitcoin Connect
+    const bitcoinConnect = new window.BitcoinConnect.BitcoinConnect({});
+    
+    // Connect wallet
+    await bitcoinConnect.enable();
+    
+    // Simulate payment (in real implementation, this would use actual Lightning)
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    // Hide zap interface
+    zapInterface.style.display = 'none';
+    
+    // Show success message
+    this.showToast(`Zapped ${user.profile?.name || targetPubkey.substring(0, 8)} ${amount} sats!`, 'success');
+    
+    // Update player stats
+    this.player.score += Math.floor(amount / 50);
+    this.updateScoreDisplay();
+    this.publishPlayerStats();
+    
+    // Save score to storage
+    this.savePlayerScoreToStorage();
+    
+    // Reset button
+    sendButton.textContent = originalText;
+    sendButton.disabled = false;
+    
+  } catch (error) {
+    console.error('Failed to send zap:', error);
+    this.showToast('Failed to send zap: ' + error.message, 'error');
+    
+    // Reset button
+    const sendButton = document.getElementById('zap-send-button');
+    sendButton.textContent = 'Send Zap';
+    sendButton.disabled = false;
+  }
+},
+
+// Show a toast notification
+showToast: function(message, type = 'info') {
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  
+  const container = document.getElementById('toast-container');
+  container.appendChild(toast);
+  
+  // Remove after 3 seconds
+  setTimeout(() => toast.remove(), 3000);
+},
+
+// Update score display
+updateScoreDisplay: function() {
+  document.getElementById('score-display').textContent = `Score: ${this.player ? this.player.score : 0}`;
+},
+
+// Update UI elements
+updateUI: function() {
+  // Update score display
+  this.updateScoreDisplay();
+  
+  // Update relay selector
+  this.updateRelaySelector();
+},
+
+// Update relay selector
+updateRelaySelector: function() {
+  const selector = document.getElementById('relay-selector');
+  selector.innerHTML = '';
+  
+  for (const [url] of this.explorerRelays) {
+    const option = document.createElement('option');
+    option.value = url;
+    option.textContent = url.replace('wss://', '');
+    option.selected = url === this.activeExplorerRelay;
+    selector.appendChild(option);
+  }
+},
+
+// Set active explorer relay
+setActiveExplorerRelay: function(url) {
+  if (!this.explorerRelays.has(url)) return;
+  
+  // Change active relay
+  this.activeExplorerRelay = url;
+  
+  // Update subscription
+  const exploreRelay = this.explorerRelays.get(url);
+  
+  // Close existing subscription
+  if (this.subscriptions.has('explorer')) {
+    this.subscriptions.get('explorer').unsub();
+  }
+  
+  if (this.subscriptions.has('profiles')) {
+    this.subscriptions.get('profiles').unsub();
+  }
+  
+  // Clear existing users from the old relay
+  // Keep following users
+  const followedUsers = new Map();
+  if (this.player && this.player.following) {
+    for (const [pubkey, user] of this.users) {
+      if (this.player.following.has(pubkey)) {
+        followedUsers.set(pubkey, user);
+      }
+    }
+  }
+  
+  // Reset users map with only followed users
+  this.users = followedUsers;
+  
+  // Create new subscription with higher limit
+  try {
+    // Subscribe to kind 1 notes with higher limit
+    const kindSub = exploreRelay.sub([{ kinds: [1], limit: 100 }]);
+    kindSub.on('event', event => this.processExplorerEvent(event));
+    this.subscriptions.set('explorer', kindSub);
+    
+    // Subscribe to profiles with higher limit
+    const profileSub = exploreRelay.sub([{ kinds: [0], limit: 50 }]);
+    profileSub.on('event', event => this.processExplorerEvent(event));
+    this.subscriptions.set('profiles', profileSub);
+  } catch (error) {
+    console.error("Failed to subscribe to explorer relay:", error);
+  }
+  
+  // Show notification
+  this.showToast(`Switched to relay: ${url}`, 'info');
+  
+  // Trigger profile fetching for new users
+  setTimeout(() => this.fetchProfiles(), 1000);
+},
+
+// Add custom relay
+addCustomRelay: async function(url) {
+  if (!url.startsWith('wss://')) {
+    url = 'wss://' + url;
+  }
+  
+  try {
+    // Connect to relay
+    const relay = await this.connectRelay(url);
+    
+    // Add to explorer relays
+    this.explorerRelays.set(url, relay);
+    
+    // Update relay selector
+    this.updateRelaySelector();
+    
+    // Set as active relay
+    this.setActiveExplorerRelay(url);
+    
+    // Show notification
+    this.showToast(`Connected to relay: ${url}`, 'success');
+  } catch (error) {
+    this.showToast(`Failed to connect to relay: ${error.message}`, 'error');
+  }
+},
+
+// Show leaderboard
+showLeaderboard: function() {
+  // Display leaderboard
+  document.getElementById('leaderboard').style.display = 'block';
+  
+  // Update leaderboard data
+  this.updateLeaderboard();
+},
+
+// Update leaderboard data
+updateLeaderboard: function() {
+  if (!this.gameRelay) return;
+  
+  // Request latest stats from all players
+  const statsSub = this.gameRelay.sub([{ kinds: [420002], limit: 50 }]);
+  
+  const scores = [];
+  
+  statsSub.on('event', event => {
+    try {
+      // Parse stats
+      const stats = JSON.parse(event.content);
+      const user = this.users.get(event.pubkey) || {
+        pubkey: event.pubkey,
+        profile: null
+      };
+      
+      // Add to scores array
+      scores.push({
+        pubkey: event.pubkey,
+        name: user.profile?.name || event.pubkey.substring(0, 8),
+        picture: user.profile?.picture || null,
+        score: stats.score || 0
+      });
+    } catch (error) {
+      console.error("Error processing stats event:", error);
+    }
+  });
+  
+  statsSub.on('eose', () => {
+    // Add current player if not included
+    if (this.player && !scores.some(s => s.pubkey === this.player.pubkey)) {
+      scores.push({
+        pubkey: this.player.pubkey,
+        name: this.player.profile?.name || this.player.pubkey.substring(0, 8),
+        picture: this.player.profile?.picture || null,
+        score: this.player.score || 0
+      });
+    }
+    
+    // Sort by score (highest first)
+    scores.sort((a, b) => b.score - a.score);
+    
+    // Update leaderboard display
+    const leaderboardList = document.getElementById('leaderboard-list');
+    if (!leaderboardList) return;
+    
+    leaderboardList.innerHTML = '';
+    
+    // Show top 10 players
+    for (let i = 0; i < Math.min(scores.length, 10); i++) {
+      const player = scores[i];
+      
+      const playerEl = document.createElement('div');
+      playerEl.className = 'leaderboard-player';
+      playerEl.dataset.pubkey = player.pubkey;
+      
+      // Highlight current player
+      if (this.player && player.pubkey === this.player.pubkey) {
+        playerEl.classList.add('current-player');
+      }
+      
+      // Create rank element
+      const rankEl = document.createElement('div');
+      rankEl.className = 'rank';
+      rankEl.textContent = i + 1;
+      
+      // Create avatar element
+      const avatarEl = document.createElement('div');
+      avatarEl.className = 'avatar';
+      
+      if (player.picture) {
+        const img = document.createElement('img');
+        img.src = player.picture;
+        img.alt = player.name;
+        avatarEl.appendChild(img);
+      } else {
+        // Use first letter of name or colored background
+        if (player.name) {
+          avatarEl.textContent = player.name.substring(0, 1).toUpperCase();
+        } else {
+          avatarEl.textContent = '#';
+        }
+        // Set background color based on pubkey
+        avatarEl.style.backgroundColor = this.getUserColor(player.pubkey);
+      }
+      
+      // Create player info element
+      const infoEl = document.createElement('div');
+      infoEl.className = 'info';
+      
+      const nameEl = document.createElement('div');
+      nameEl.className = 'name';
+      nameEl.textContent = player.name;
+      
+      const scoreEl = document.createElement('div');
+      scoreEl.className = 'score';
+      scoreEl.textContent = player.score;
+      
+      infoEl.appendChild(nameEl);
+      infoEl.appendChild(scoreEl);
+      
+      // Assemble player element
+      playerEl.appendChild(rankEl);
+      playerEl.appendChild(avatarEl);
+      playerEl.appendChild(infoEl);
+      
+      // Add click handler to show user profile
+      playerEl.addEventListener('click', () => {
+        this.showUserPopup(player.pubkey);
+        document.getElementById('leaderboard').style.display = 'none';
+      });
+      
+      leaderboardList.appendChild(playerEl);
+    }
+  });
+},
+
+// Helper functions for better user display
+getUserColor: function(pubkey) {
+  // Generate a consistent color from pubkey that's visually appealing
+  const hash = pubkey.substring(0, 6);
+  const hue = (parseInt(hash, 16) % 360);
+  return `hsl(${hue}, 70%, 60%)`;
+},
+
+getInitials: function(pubkey) {
+  // Create unique 3-character identifier for users without names
+  return '@' + pubkey.substring(0, 2).toUpperCase();
+}
+
+};
+
+// Initialize the game
+RelayWorld.init();
+})();
