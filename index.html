@@ -1,5 +1,213 @@
 },
         
+        // Format message content with media previews
+        formatMessageContent: function(content) {
+          // Process URLs
+          let formattedContent = content.replace(
+            /(https?:\/\/[^\s]+)/g, 
+            (url) => {
+              // Check for image URLs
+              if (url.match(/\.(jpeg|jpg|gif|png)$/i)) {
+                return `<a href="${url}" target="_blank"><img src="${url}" class="chat-image" alt="Image"></a>`;
+              }
+              // Check for YouTube
+              const youtubeMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+              if (youtubeMatch) {
+                return `<a href="${url}" target="_blank">🎬 YouTube Video</a>`;
+              }
+              // Regular link
+              return `<a href="${url}" target="_blank">${url}</a>`;
+            }
+          );
+          
+          return formattedContent;
+        },
+        
+        // Publish player position
+        publishPlayerPosition: (function() {
+          let lastPublish = 0;
+          const PUBLISH_INTERVAL = 200; // 5x per second
+          
+          return function() {
+            if (!this.player || !this.gameRelay) return;
+            
+            const now = Date.now();
+            if (now - lastPublish < PUBLISH_INTERVAL) return;
+            lastPublish = now;
+            
+            const event = {
+              kind: 420001,
+              content: JSON.stringify({ x: this.player.x, y: this.player.y }),
+              tags: [["t", "position"]],
+              created_at: Math.floor(now / 1000),
+              pubkey: this.player.pubkey
+            };
+            
+            this.signAndPublish(event, this.gameRelay);
+          };
+        })(),
+        
+        // Publish player stats
+        publishPlayerStats: function() {
+          if (!this.player || !this.gameRelay) return;
+          
+          const event = {
+            kind: 420002,
+            content: JSON.stringify({
+              score: this.player.score,
+              itemsCollected: this.player.inventory.length
+            }),
+            tags: [["t", "stats"]],
+            created_at: Math.floor(Date.now() / 1000),
+            pubkey: this.player.pubkey
+          };
+          
+          this.signAndPublish(event, this.gameRelay);
+        },
+        
+        // Sign and publish an event
+        signAndPublish: async function(event, relay) {
+          if (!relay) {
+            console.error('Cannot publish to null relay');
+            return null;
+          }
+          
+          try {
+            const signedEvent = await window.nostr.signEvent(event);
+            relay.publish(signedEvent);
+            return signedEvent;
+          } catch (error) {
+            console.error('Failed to sign and publish event:', error);
+            return null;
+          }
+        },
+        
+        // Show a toast notification
+        showToast: function(message, type = 'info') {
+          const toast = document.createElement('div');
+          toast.className = `toast ${type}`;
+          toast.textContent = message;
+          
+          const container = document.getElementById('toast-container');
+          container.appendChild(toast);
+          
+          // Remove after 3 seconds
+          setTimeout(() => toast.remove(), 3000);
+        },
+        
+        // Update score display
+        updateScoreDisplay: function() {
+          document.getElementById('score-display').textContent = `Score: ${this.player ? this.player.score : 0}`;
+        },
+        
+        // Update UI elements
+        updateUI: function() {
+          // Update score display
+          this.updateScoreDisplay();
+          
+          // Update relay selector
+          this.updateRelaySelector();
+        },
+        
+        // Update relay selector
+        updateRelaySelector: function() {
+          const selector = document.getElementById('relay-selector');
+          selector.innerHTML = '';
+          
+          for (const [url] of this.explorerRelays) {
+            const option = document.createElement('option');
+            option.value = url;
+            option.textContent = url.replace('wss://', '');
+            option.selected = url === this.activeExplorerRelay;
+            selector.appendChild(option);
+          }
+        },
+        
+        // Set active explorer relay
+        setActiveExplorerRelay: function(url) {
+          if (!this.explorerRelays.has(url)) return;
+          
+          // Change active relay
+          this.activeExplorerRelay = url;
+          
+          // Update subscription
+          const exploreRelay = this.explorerRelays.get(url);
+          
+          // Close existing subscription
+          if (this.subscriptions.has('explorer')) {
+            this.subscriptions.get('explorer').unsub();
+          }
+          
+          if (this.subscriptions.has('profiles')) {
+            this.subscriptions.get('profiles').unsub();
+          }
+          
+          // Clear existing users from the old relay
+          // Keep following users
+          const followedUsers = new Map();
+          if (this.player && this.player.following) {
+            for (const [pubkey, user] of this.users) {
+              if (this.player.following.has(pubkey)) {
+                followedUsers.set(pubkey, user);
+              }
+            }
+          }
+          
+          // Reset users map with only followed users
+          this.users = followedUsers;
+          
+          // Create new subscription with higher limit
+          try {
+            // Subscribe to kind 1 notes with higher limit
+            const kindSub = exploreRelay.sub([{ kinds: [1], limit: 100 }]);
+            kindSub.on('event', event => this.processExplorerEvent(event));
+            this.subscriptions.set('explorer', kindSub);
+            
+            // Subscribe to profiles with higher limit
+            const profileSub = exploreRelay.sub([{ kinds: [0], limit: 50 }]);
+            profileSub.on('event', event => this.processExplorerEvent(event));
+            this.subscriptions.set('profiles', profileSub);
+          } catch (error) {
+            console.error("Failed to subscribe to explorer relay:", error);
+          }
+          
+          // Show notification
+          this.showToast(`Switched to relay: ${url}`, 'info');
+          
+          // Trigger profile fetching for new users
+          setTimeout(() => this.fetchProfiles(), 1000);
+        },
+        
+        // Show leaderboard
+        showLeaderboard: function() {
+          // Display leaderboard
+          document.getElementById('leaderboard').style.display = 'block';
+          
+          // Update leaderboard data
+          this.updateLeaderboard();
+        },
+        
+        // Helper functions for better user display
+        getUserColor: function(pubkey) {
+          // Generate a consistent color from pubkey that's visually appealing
+          const hash = pubkey.substring(0, 6);
+          const hue = (parseInt(hash, 16) % 360);
+          return `hsl(${hue}, 70%, 60%)`;
+        },
+        
+        getInitials: function(pubkey) {
+          // Create unique 3-character identifier for users without names
+          return '@' + pubkey.substring(0, 2).toUpperCase();
+        }
+      };
+      
+      // Initialize the game
+      RelayWorld.init();
+    })();
+    </script>
+</body>
+</html>
+        
         // Check for collectible pickup
         checkCollectibles: function() {
           for (let i = 0; i < this.items.length; i++) {
@@ -174,7 +382,57 @@
           }
           
           const usernameSpan = document.createElement('span');
-          usernameS        },
+          usernameSpan.className = 'username';
+          usernameSpan.textContent = username;
+          
+          const contentSpan = document.createElement('span');
+          contentSpan.className = 'content';
+          
+          // Process message content for media and links
+          contentSpan.innerHTML = this.formatMessageContent(message);
+          
+          messageEl.appendChild(usernameSpan);
+          messageEl.appendChild(document.createTextNode(': '));
+          messageEl.appendChild(contentSpan);
+          
+          chatMessages.appendChild(messageEl);
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+        },
+        
+        // Add message to global chat display
+        addGlobalMessage: function(username, message, isFromMe = false, pubkey = null) {
+          const globalMessages = document.getElementById('global-messages');
+          
+          const messageEl = document.createElement('div');
+          messageEl.className = isFromMe ? 'chat-message from-me' : 'chat-message';
+          
+          // Store pubkey for interaction
+          if (pubkey) {
+            messageEl.dataset.pubkey = pubkey;
+            messageEl.dataset.content = message; // Store content for note detail view
+            messageEl.addEventListener('click', () => {
+              this.showNoteDetail(pubkey, message);
+            });
+            messageEl.style.cursor = 'pointer';
+          }
+          
+          const usernameSpan = document.createElement('span');
+          usernameSpan.className = 'username';
+          usernameSpan.textContent = username;
+          
+          const contentSpan = document.createElement('span');
+          contentSpan.className = 'content';
+          
+          // Process message content for media and links
+          contentSpan.innerHTML = this.formatMessageContent(message);
+          
+          messageEl.appendChild(usernameSpan);
+          messageEl.appendChild(document.createTextNode(': '));
+          messageEl.appendChild(contentSpan);
+          
+          globalMessages.appendChild(messageEl);
+          globalMessages.scrollTop = globalMessages.scrollHeight;
+        },
         
         // Draw a special location
         drawSpecialLocation: function(location) {
